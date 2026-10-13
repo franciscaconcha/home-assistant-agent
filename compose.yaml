@@ -1,0 +1,22 @@
+name: hermes-home
+services:
+  hermes:
+    image: hermes-home:local
+    build:
+      context: .
+      args:
+        HERMES_IMAGE: ${HERMES_IMAGE:-nousresearch/hermes-agent@sha256:444b42594e7f467425872fc35e077a227d377f0fe0726bc818706d62175fad8b}
+    command: [gateway, run]
+    restart: unless-stopped
+    stop_grace_period: 60s
+    environment:
+      HERMES_UID: ${HERMES_UID:-1000}
+      HERMES_GID: ${HERMES_GID:-1000}
+    volumes:
+      - ./data:/opt/data
+    # WhatsApp connects outbound; no published ports or host Docker socket needed.
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "3"

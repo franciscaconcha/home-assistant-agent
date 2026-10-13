@@ -1,0 +1,15 @@
+# Initial template, copied only when data/config.yaml does not exist.
+# Select provider/model with `make setup`; no model or keys are hard-coded here.
+whatsapp:
+  unauthorized_dm_behavior: ignore
+  group_policy: pairing
+  send_read_receipts: false
+
+mcp_servers:
+  household:
+    command: /opt/household-tools/.venv/bin/household-tools
+    timeout: 30
+    tools:
+      include: [household_status]
+    sampling:
+      enabled: false
