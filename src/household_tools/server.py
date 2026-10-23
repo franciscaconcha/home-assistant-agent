@@ -2,6 +2,7 @@
 
 from mcp.server.fastmcp import FastMCP
 from household_tools.integrations import yoto
+from household_tools.integrations import ocado
 
 mcp = FastMCP("household")
 
@@ -12,7 +13,7 @@ def household_status() -> dict[str, str]:
     return {
         "server": "ok",
         "yoto": "authorised (not a live check)" if yoto.token_path().exists() else "not authorised",
-        "ocado": "not implemented",
+        "ocado": "session saved (not a live check)" if ocado.session_path().exists() else "not connected",
     }
 
 
@@ -38,6 +39,12 @@ def yoto_playback(player: str, action: str) -> dict:
 def yoto_set_volume(player: str, volume: int) -> dict:
     """Set integer volume percentage, within the operator's per-player maximum."""
     return yoto.set_volume(player, volume)
+
+
+@mcp.tool()
+def ocado_basket() -> dict:
+    """Read the current Ocado trolley, quantities and known prices. Cannot change it or check out."""
+    return ocado.basket()
 
 
 def main() -> None:

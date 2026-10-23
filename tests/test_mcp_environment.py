@@ -11,7 +11,7 @@ from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 
 from household_tools import yoto_setup
-from household_tools.integrations import yoto
+from household_tools.integrations import yoto, ocado
 
 
 class MCPEnvironmentTests(unittest.IsolatedAsyncioTestCase):
@@ -22,6 +22,7 @@ class MCPEnvironmentTests(unittest.IsolatedAsyncioTestCase):
             with patch.dict(os.environ, {"HERMES_HOME": str(profile)}):
                 # Fake marker only; household_status never reads or transmits tokens.
                 yoto.write_private(yoto.token_path(), {"test_marker": True})
+                yoto.write_private(ocado.session_path(), {"test_marker": True})
                 (profile / "config.yaml").write_text("mcp_servers: {}\n")
                 with patch.object(yoto, "list_players", return_value=[{
                     "device_id": "test-player", "name": "Test", "online": True,
@@ -45,3 +46,5 @@ class MCPEnvironmentTests(unittest.IsolatedAsyncioTestCase):
                         result = await session.call_tool("household_status", {})
                         self.assertFalse(result.isError)
                         self.assertEqual(result.structuredContent["yoto"], expected)
+                        self.assertEqual(result.structuredContent["ocado"],
+                            "session saved (not a live check)" if explicit else "not connected")

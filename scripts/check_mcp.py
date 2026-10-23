@@ -21,15 +21,17 @@ async def check(directory: str) -> None:
             tools = await session.list_tools()
             assert {tool.name for tool in tools.tools} == {
                 "household_status", "yoto_list_players", "yoto_player_status",
-                "yoto_playback", "yoto_set_volume",
+                "yoto_playback", "yoto_set_volume", "ocado_basket",
             }
             result = await session.call_tool("household_status", {})
             assert not result.isError, result
             assert result.structuredContent == {
-                "server": "ok", "yoto": "not authorised", "ocado": "not implemented"
+                "server": "ok", "yoto": "not authorised", "ocado": "not connected"
             }, result
             denied = await session.call_tool("yoto_playback", {"player": "missing", "action": "pause"})
             assert denied.isError, denied
+            missing = await session.call_tool("ocado_basket", {})
+            assert missing.isError, missing
     print("MCP stdio discovery and household_status passed.")
 
 

@@ -1,4 +1,4 @@
-.PHONY: init build setup pair up down logs status doctor check yoto-login yoto-configure
+.PHONY: init build setup pair up down logs status doctor check yoto-login yoto-configure ocado-login ocado-configure ocado-check
 
 init:
 	sh scripts/init.sh
@@ -37,3 +37,15 @@ yoto-login:
 
 yoto-configure:
 	docker compose run --rm --no-deps hermes /opt/household-tools/.venv/bin/household-yoto-configure
+
+# Run on the Mac: manual browser login, with the session stored in ignored data/.
+ocado-login:
+	uv run --locked --extra ocado-login python -m playwright install chromium
+	HERMES_HOME="$(CURDIR)/data" uv run --locked --extra ocado-login household-ocado-login
+
+# Run on the droplet after copying data/credentials/ocado.json from the Mac.
+ocado-configure:
+	docker compose run --rm --no-deps hermes /opt/household-tools/.venv/bin/household-ocado-configure
+
+ocado-check:
+	docker compose run --rm --no-deps hermes /opt/household-tools/.venv/bin/household-ocado-check

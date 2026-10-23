@@ -1,7 +1,8 @@
 # Adding household tools
 
 The server exposes `household_status` and Yoto player tools. Follow [Yoto setup](yoto.md)
-to authorise an account and select allowed players. Ocado is not implemented.
+to authorise an account and select allowed players. [Ocado setup](ocado.md) connects a
+read-only current-trolley tool using an operator-provided browser session.
 No real credentials or fake shopping/player data are included.
 
 Add adapter modules under `src/household_tools/integrations/` when implementing each
