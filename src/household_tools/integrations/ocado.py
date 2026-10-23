@@ -18,7 +18,7 @@ from household_tools.integrations.yoto import home
 ORIGIN = "https://www.ocado.com"
 CART = "/api/cart/v1/carts/active?cartProductSorting=CATEGORIES"
 PRODUCTS = "/api/webproductpagews/v6/products"
-READ_REQUESTS = {("GET", CART), ("GET", "/"), ("PUT", PRODUCTS)}
+READ_REQUESTS = {("GET", CART)}
 
 
 class OcadoError(ValueError):
@@ -32,6 +32,29 @@ def session_path():
 def ocado_domain(domain: str) -> bool:
     domain = domain.lstrip(".").lower()
     return domain == "ocado.com" or domain.endswith(".ocado.com")
+
+
+def product_names(products) -> dict[str, str]:
+    """Keep only product ID/name pairs from an ordinary browser product response."""
+    if not isinstance(products, list):
+        return {}
+    return {p["productId"]: p["name"] for p in products if isinstance(p, dict)
+            and isinstance(p.get("productId"), str) and isinstance(p.get("name"), str)
+            and 0 < len(p["productId"]) <= 200 and 0 < len(p["name"]) <= 1000}
+
+
+def page_product_names(html: str) -> dict[str, str]:
+    """Read productEntities JSON already embedded in the user's visible page."""
+    names = {}
+    decoder = json.JSONDecoder()
+    for match in re.finditer(r'"productEntities"\s*:\s*', html):
+        try:
+            entities, _ = decoder.raw_decode(html, match.end())
+        except ValueError:
+            continue
+        if isinstance(entities, dict):
+            names.update(product_names(list(entities.values())))
+    return names
 
 
 def validated_session(value: dict) -> dict:
@@ -61,7 +84,12 @@ def validated_session(value: dict) -> dict:
     agent = value.get("user_agent", "HermesHome/0.1 (+personal read-only trolley)")
     if not isinstance(agent, str) or "\n" in agent or "\r" in agent:
         raise OcadoError("Invalid Ocado session metadata; sign in again.")
-    return {"cookies": cookies, "user_agent": agent, "captured_at": value.get("captured_at")}
+    saved = value.get("product_names", {})
+    if not isinstance(saved, dict):
+        saved = {}
+    saved = product_names([{"productId": key, "name": name} for key, name in saved.items()])
+    return {"cookies": cookies, "user_agent": agent, "captured_at": value.get("captured_at"),
+            "product_names": saved}
 
 
 def load_session() -> dict:
@@ -94,9 +122,8 @@ def cookie_jar(session: dict) -> httpx.Cookies:
 
 
 def read_request(client: httpx.Client, method: str, path: str, **kwargs) -> httpx.Response:
-    # PUT here is Ocado's product-information lookup, not a trolley update.
     if (method, path) not in READ_REQUESTS:
-        raise OcadoError("This integration permits only trolley and product-information reads.")
+        raise OcadoError("This integration permits only current-trolley reads.")
     try:
         response = client.request(method, ORIGIN + path, **kwargs)
     except httpx.HTTPError:
@@ -164,24 +191,11 @@ def basket() -> dict:
         cart = read_json(read_request(client, "GET", CART))
         # Validate before metadata requests and before interpreting a missing cart as empty.
         normalise_trolley(cart, [])
-        entries = cart["items"] if isinstance(cart["items"], list) else list(cart["items"].values())
-        ids = list(dict.fromkeys(item["productId"] for item in entries))
-        products, warning = [], None
-        if ids:
-            try:
-                page = read_request(client, "GET", "/", headers={"Accept": "text/html"})
-                match = re.search(r'"csrf"\s*:\s*\{\s*"token"\s*:\s*"([^"\r\n]+)"', page.text)
-                if not match:
-                    raise OcadoError("Product names could not be loaded from the Ocado session.")
-                for start in range(0, len(ids), 100):
-                    value = read_json(read_request(client, "PUT", PRODUCTS, json=ids[start:start + 100],
-                                                  headers={"x-csrf-token": match[1]}))
-                    if not isinstance(value.get("products"), list):
-                        raise OcadoError("Ocado product details were not recognised.")
-                    products.extend(value["products"])
-            except OcadoError as error:
-                warning = str(error)
+        products = [{"productId": key, "name": name} for key, name in session["product_names"].items()]
         result = normalise_trolley(cart, products)
-        if warning:
-            result["warning"] = warning
+        result["name_source"] = "Names saved during the operator's Mac browser visit, matched by product ID; not live metadata."
+        result["names_captured_at"] = session["captured_at"]
+        unknown = sum(item["name"] is None for item in result["items"])
+        if unknown:
+            result["warning"] = f"{unknown} item lines have no saved name. Open the current trolley with make ocado-login on your Mac and copy the refreshed session to the droplet."
         return result

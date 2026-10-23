@@ -3,7 +3,9 @@ import os
 import tempfile
 import time
 import unittest
-from unittest.mock import patch
+import sys
+from types import SimpleNamespace
+from unittest.mock import patch, MagicMock
 
 import httpx
 import yaml
@@ -66,15 +68,15 @@ class OcadoTests(unittest.TestCase):
         for amount in [None, "invalid", "NaN", "Infinity", -1, True]:
             self.assertIsNone(ocado.amount(amount))
 
-    def run_basket(self, handler):
-        yoto.write_private(ocado.session_path(), session())
+    def run_basket(self, handler, saved=None):
+        yoto.write_private(ocado.session_path(), saved or session())
         original = httpx.Client
         def client(**kwargs):
             return original(transport=httpx.MockTransport(handler), **kwargs)
         with patch.object(ocado.httpx, "Client", side_effect=client):
             return ocado.basket()
 
-    def test_full_trolley_read_uses_only_fixed_read_operations(self):
+    def test_snapshot_names_need_only_live_trolley_request(self):
         seen = []
         def handler(request):
             seen.append((request.method, request.url.path))
@@ -82,15 +84,13 @@ class OcadoTests(unittest.TestCase):
             self.assertIn("test-session=", request.headers["cookie"])
             if request.url.path == "/api/cart/v1/carts/active":
                 return httpx.Response(200, json={"items": [{"productId": "p", "quantity": 1}]})
-            if request.url.path == "/":
-                return httpx.Response(200, text='{"csrf":{"token":"test-csrf"}}')
-            self.assertEqual(request.method, "PUT")
-            self.assertEqual(json.loads(request.content), ["p"])
-            self.assertEqual(request.headers["x-csrf-token"], "test-csrf")
-            return httpx.Response(200, json={"products": [{"productId": "p", "name": "Milk"}]})
-        result = self.run_basket(handler)
+            self.fail("The challenged product-information and homepage routes must not be called.")
+        saved = {**session(), "product_names": {"p": "Milk"}, "captured_at": 12345}
+        result = self.run_basket(handler, saved)
         self.assertEqual(result["items"][0]["name"], "Milk")
-        self.assertEqual(seen, [("GET", "/api/cart/v1/carts/active"), ("GET", "/"), ("PUT", ocado.PRODUCTS)])
+        self.assertEqual(result["names_captured_at"], 12345)
+        self.assertIn("not live", result["name_source"])
+        self.assertEqual(seen, [("GET", "/api/cart/v1/carts/active")])
 
     def test_expired_challenged_and_html_responses_are_errors_not_empty_baskets(self):
         for code in [202, 301, 401, 403, 429, 500]:
@@ -100,11 +100,11 @@ class OcadoTests(unittest.TestCase):
         with self.assertRaises(ocado.OcadoError):
             self.run_basket(lambda request: httpx.Response(200, text="<html>Login</html>"))
 
-    def test_metadata_failure_preserves_items_without_inventing_names(self):
+    def test_missing_snapshot_names_are_unknown_without_remote_metadata_attempts(self):
         def handler(request):
             if request.url.path == "/api/cart/v1/carts/active":
                 return httpx.Response(200, json={"items": [{"productId": "p", "quantity": 1}]})
-            return httpx.Response(403, text="TEST_PRIVATE_COOKIE")
+            self.fail("Must not fetch product names from a challenged endpoint.")
         result = self.run_basket(handler)
         self.assertEqual(result["total_quantity"], 1)
         self.assertIsNone(result["items"][0]["name"])
@@ -117,6 +117,47 @@ class OcadoTests(unittest.TestCase):
                                  ("GET", "https://example.com"), ("POST", "/checkout")]:
                 with self.assertRaises(ocado.OcadoError):
                     ocado.read_request(client, method, path)
+
+    def test_browser_page_names_handle_escaped_quotes_and_braces(self):
+        value = {"p": {"productId": "p", "name": 'Milk "organic" {1L}'}}
+        html = '<script>{"productEntities": ' + json.dumps(value) + ', "unrelated": "private"}</script>'
+        self.assertEqual(ocado.page_product_names(html), {"p": 'Milk "organic" {1L}'})
+        self.assertEqual(ocado.page_product_names('"productEntities": invalid'), {})
+
+    def test_snapshot_names_are_validated_and_matched_by_id(self):
+        saved = {**session(), "product_names": {"p": "Milk", "wrong": 123}}
+        self.assertEqual(ocado.validated_session(saved)["product_names"], {"p": "Milk"})
+        result = self.run_basket(lambda request: httpx.Response(200, json={
+            "items": [{"productId": "new-product", "quantity": 2}],
+        }), saved)
+        self.assertIsNone(result["items"][0]["name"])
+        self.assertEqual(result["items"][0]["quantity"], 2)
+        self.assertIn("1 item lines", result["warning"])
+
+    def test_manual_browser_sync_saves_only_successful_first_party_product_names(self):
+        manager, browser, context, page = MagicMock(), MagicMock(), MagicMock(), MagicMock()
+        manager.__enter__.return_value.chromium.launch.return_value = browser
+        browser.new_context.return_value = context
+        context.new_page.return_value = page
+        context.cookies.return_value = session()["cookies"]
+        page.evaluate.return_value = "TestBrowser/1.0"
+        callbacks = {}
+        context.on.side_effect = lambda event, callback: callbacks.update({event: callback})
+        def content():
+            for url, code, key in [(ocado.ORIGIN + ocado.PRODUCTS, 200, "valid"),
+                                    ("https://example.com" + ocado.PRODUCTS, 200, "wrong-origin"),
+                                    (ocado.ORIGIN + ocado.PRODUCTS, 202, "challenged")]:
+                callbacks["response"](SimpleNamespace(url=url, status=code,
+                    json=lambda key=key: {"products": [{"productId": key, "name": "Milk"}]}))
+            return '<script>{"productEntities":{"p":{"productId":"embedded","name":"Bread"}}}</script>'
+        page.content.side_effect = content
+        fake = SimpleNamespace(sync_playwright=lambda: manager, Error=RuntimeError)
+        with patch.dict(sys.modules, {"playwright.sync_api": fake}), patch("builtins.input", return_value=""):
+            ocado_setup.login()
+        saved = ocado.load_session()
+        self.assertEqual(saved["product_names"], {"valid": "Milk", "embedded": "Bread"})
+        self.assertEqual(ocado.session_path().stat().st_mode & 0o777, 0o600)
+        browser.close.assert_called_once()
 
     def test_configuration_preserves_yoto_and_whatsapp(self):
         yoto.write_private(ocado.session_path(), session())

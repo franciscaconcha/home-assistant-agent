@@ -43,7 +43,7 @@ def yoto_set_volume(player: str, volume: int) -> dict:
 
 @mcp.tool()
 def ocado_basket() -> dict:
-    """Read the current Ocado trolley, quantities and known prices. Cannot change it or check out."""
+    """Read live Ocado trolley quantities/prices; names are saved from a Mac browser visit, not live. Cannot change it or check out."""
     return ocado.basket()
 
 

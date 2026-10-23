@@ -1,7 +1,8 @@
 # Read the current Ocado trolley
 
 This integration exposes one read-only MCP tool, `ocado_basket`. It returns the current
-trolley's item names where available, quantities, and known line prices/subtotal. It does
+trolley's live quantities and known line prices/subtotal, with names saved during a normal
+Mac browser visit and matched by product ID. Names are a snapshot, not a live lookup. It does
 not read saved shopping lists or modify your basket, delivery details, orders or payments.
 
 The connection uses Ocado's internal website API and your own browser cookies. It is
@@ -23,6 +24,11 @@ This requires [uv](https://docs.astral.sh/uv/getting-started/installation/). The
 installs the optional Playwright browser dependency and Chromium, then opens a separate
 visible browser. Sign in directly to Ocado and open your current trolley. Return to the
 terminal and press Enter only once you can see your trolley in that browser.
+
+The helper also saves product ID/name pairs from product responses and page data that the
+normal browser visit already loaded. It prints the number captured. No extra product API
+requests are sent by the helper. Names for items you add later may be unknown until you
+repeat this browser sync and copy the updated session.
 
 The helper does not read your password or automate checkout. It saves only Ocado-domain
 cookies and browser metadata to ignored `data/credentials/ocado.json` with mode 0600.
@@ -72,9 +78,10 @@ On **WhatsApp**, send `/reload-mcp`, then **Use ocado_basket to show my current 
 - Authentication failure, a redirect, bot challenge, or unrecognised response causes an
   explicit error. It is not reported as an empty trolley. Empty `items` from the active-cart
   endpoint is reported as empty; check the account and website if that is unexpected.
-- Product names are fetched using a separate product-information query. If it fails,
-  the tool reports unknown names plus a warning instead of inventing product names.
-  This query uses HTTP PUT but does not update products or trolley quantities.
+- Product names come from the last normal Mac browser visit. Products not present in
+  that snapshot have unknown names and trigger a warning; run the login/sync again.
+  The droplet no longer calls the product-information endpoint because it returned HTTP
+  202 during live testing. It reads only the trolley and uses saved names from the browser.
 - Missing prices remain unknown; delivery fees/promotions at checkout may change totals.
 - HTTP 202/403/429 may indicate Ocado blocked the request. Do not loop retries or try to
   bypass the challenge. Sign in normally or retry later. A datacentre restriction may mean
