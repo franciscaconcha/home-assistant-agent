@@ -254,7 +254,7 @@ make up
 ```
 
 The enable command preserves and backs up your runtime config and instructions, adds the
-three weekly tools, explicitly enables the weekly workflow and allows a longer tool
+weekly tools, explicitly enables the weekly workflow and allows a longer tool
 request timeout. It does not enable the separate general order-edit writer. Send
 `/reload-mcp` on WhatsApp, then ask to see the weekly list before the first run.
 
@@ -265,11 +265,12 @@ the same order through the Ocado app/website while a run is in progress.
 ### Repeat requests and interrupted runs
 
 A private run record under `data/ocado-weekly-runs/` is saved before the first write. It
-includes the original order and standalone trolley for diagnosis. Requests for a
-successfully prepared order return **already prepared**, preserving later edits, even if
-you subsequently change the saved weekly list. The updated list is used for the next
-unprocessed booked order. Existing standalone trolleys are not intentionally merged or
-cleared by this workflow.
+includes the original order and standalone trolley for diagnosis. Every new direct weekly
+request rebuilds the next booked order immediately, even when already prepared. It uses
+the current staples and only recipes named in the new request, replacing later additions.
+The previous successful run is archived under `data/ocado-weekly-history/`. The correct
+order's open edit trolley can be reused. Another order's active edit session is refused.
+Existing standalone trolleys are not intentionally merged or cleared by this workflow.
 
 If a request times out, an item is unavailable, the order identity changes or any readback
 fails, the workflow stops and the same order is blocked from automatic replay. The edit
@@ -286,29 +287,32 @@ development. The first real run still needs verification on the droplet.
 See [Recipe shopping lists](recipes.md) to store private recipe files and request
 **weekly Ocado, with recipe one and recipe two**. Quantities for the same product add
 across staples and all selected recipes. Draft or unknown recipes stop the shop before
-an order is opened. The staples file, checkout boundary and repeat guard stay in effect.
+an order is opened. The staples file and manual checkout boundary stay in effect.
 
 ## Redo an already prepared weekly order
 
-An ordinary repeated **weekly Ocado** request still makes no changes. To deliberately
-rebuild the same delivery, ask **Redo weekly Ocado with recipe one and recipe two** (or
-ask for a redo with only your weekly staples).
+Simply send **weekly Ocado** again, optionally **with recipe one and recipe two**.
+**Redo weekly Ocado** and **Rebuild weekly Ocado** work too. Every direct request executes
+immediately without a preview or confirmation step. It clears and rebuilds the next
+booked order, including later additions. With no named recipes it uses only staples;
+previous recipe selections are not carried over.
 
-The bot calls `ocado_plan_weekly_redo`, reads the actual booked order/current edit trolley,
-and previews its delivery, the full replacement list and before/after changes. **This
-replacement removes later additions too.** After you explicitly confirm that preview,
-`ocado_apply_weekly_redo` clears and refills the order using the previewed list. It does
-not submit checkout. The correct order's existing edit trolley can be reused; another
-order's active edit session is refused.
+The tool verifies the active order identity and quantities and archives the previous
+successful run before writing. It can reuse that order's current edit trolley or open
+an edit session for a saved order. It never submits checkout. Open Ocado to review and
+save/check out the completed draft before the deadline.
 
-Previews expire in 10 minutes and cannot be replayed. Changes to the order, current trolley,
-staples, recipes or previous run require a fresh preview and confirmation. The old successful
-run is archived privately under `data/ocado-weekly-history/`; do not delete run records to
-force a repeat. A prior failed/uncertain run still requires manual review and cannot use
-this redo flow. An interrupted redo also blocks automatic repeats.
+If you explicitly ask for a preview, `ocado_plan_weekly_redo` shows the proposed replacement
+without modifying Ocado. Optional preview plans expire after 10 minutes, require
+confirmation to apply, and cannot be replayed. Changes to the order, trolley or target
+invalidate a preview. These optional tools are not part of the normal weekly execution.
 
-To install the redo tools, pull and build the latest code, then run `make down`,
+A prior failed or uncertain attempt still needs manual review; neither automatic retries
+nor deleting run records are supported. This is separate from a new request following a
+successful preparation, which executes immediately.
+
+To install this behavior, pull and build the latest code, then run `make down`,
 `make ocado-enable-weekly`, and `make up`. Send `/reload-mcp` on WhatsApp. Re-enabling
-weekly adds the new tool names and redo guidance while preserving existing settings.
-No live redo was performed during development; the flow is covered by mocked HTTP,
-including active-session reuse, stale previews, duplicate confirmation and partial failure.
+weekly appends the updated preference while preserving existing settings and instructions.
+No live repeat was performed during development; mocked HTTP covers active-session reuse,
+new recipe selections, immediate repeats, wrong-order refusal and partial failure.

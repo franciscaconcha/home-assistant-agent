@@ -47,15 +47,18 @@ class WeeklyTests(unittest.TestCase):
         self.assertEqual(state["original_order"]["items"], order()["items"])
         self.assertTrue(all("checkout" not in route for route, _ in self.posts))
 
-    def test_duplicate_trigger_does_not_erase_later_edits_even_if_recipe_changed(self):
+    def test_repeated_user_request_rebuilds_current_list_and_removes_later_additions(self):
         weekly.run("weekly ocado")
         writes = len(self.posts)
         self.cart["extra-afterwards"] = 1
+        self.order["is_under_edit"] = True
         weekly.save_recipe([{**recipe()[0], "quantity": 5}], True)
-        result = weekly.run("weekly ocado")
-        self.assertEqual(result["status"], "already_prepared")
-        self.assertEqual(len(self.posts), writes)
-        self.assertEqual(self.cart["extra-afterwards"], 1)
+        result = weekly.run("weekly ocado again")
+        self.assertEqual(result["status"], "ready_for_checkout")
+        self.assertGreater(len(self.posts), writes)
+        self.assertEqual({p:q for p,q in self.cart.items() if q},{"milk":5})
+        self.assertTrue(all('/apply-quantity' in route for route,_ in self.posts[writes:]))
+        self.assertEqual(len(list((yoto.home()/'ocado-weekly-history').glob('*.json'))),1)
 
     def test_removal_failure_stops_before_addition_and_cannot_replay(self):
         self.quantity_failure = "timeout"
@@ -169,8 +172,31 @@ class WeeklyTests(unittest.TestCase):
         self.assertEqual(weekly.load_recipe()['items'],recipe())
         writes=len(self.posts)
         repeat=weekly.run('weekly ocado')
-        self.assertEqual(repeat['recipes'],result['recipes'])
+        self.assertEqual(repeat['recipes'],[])
+        self.assertGreater(len(self.posts),writes)
+        self.assertEqual({p:q for p,q in self.cart.items() if q},{'milk':4,'juice':1})
+
+    def test_repeat_can_reopen_saved_order_and_use_new_recipe_selection(self):
+        weekly.run('weekly ocado')
+        self.editing=False
+        self.order['items']=[{'product_id':'milk','name':'Milk','quantity':4},
+                             {'product_id':'juice','name':'Juice','quantity':1}]
+        recipes.save_recipe('meal-one','Meal one',[
+            {'product_id':'extra','name':'Recipe product','quantity':2}],confirmed=True)
+        writes=len(self.posts)
+        result=weekly.run('redo weekly ocado with Meal one',['Meal one'])
+        self.assertEqual(result['status'],'ready_for_checkout')
+        self.assertEqual(self.posts[writes][0],edit.START_EDIT)
+        self.assertEqual(self.cart['extra'],2)
+
+    def test_repeat_does_not_touch_another_orders_edit_session(self):
+        weekly.run('weekly ocado')
+        writes=len(self.posts)
+        self.wrong_order=True
+        with self.assertRaisesRegex(ocado.OcadoError,'Another order'):
+            weekly.run('weekly ocado')
         self.assertEqual(len(self.posts),writes)
+        self.assertEqual(json.loads(weekly.run_path('order-next').read_text())['state'],'ready_for_checkout')
 
     def test_upgrade_adds_recipe_guidance_when_old_weekly_marker_already_exists(self):
         path=yoto.home()/'config.yaml'
@@ -181,4 +207,5 @@ class WeeklyTests(unittest.TestCase):
         text=soul.read_text()
         self.assertEqual(text.count('<!-- ocado-weekly-workflow -->'),1)
         self.assertEqual(text.count('<!-- ocado-recipes-v1 -->'),1)
+        self.assertEqual(text.count('<!-- ocado-weekly-repeat-v2 -->'),1)
         self.assertTrue(text.startswith('Existing custom instructions.'))

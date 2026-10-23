@@ -168,7 +168,7 @@ def apply_redo(plan_id: str, confirmed: bool = False) -> dict:
 def run(trigger: str, recipes: list[str] | None = None, *, _redo_plan_id: str | None = None) -> dict:
     if os.environ.get("OCADO_WEEKLY_ENABLED") != "true":
         raise ocado.OcadoError("Weekly Ocado is disabled. Run make ocado-enable-weekly on the droplet first.")
-    match = re.fullmatch(r"(?:make my )?weekly ocado(?:\s*,?\s+with\s+(.+))?", trigger.strip(), re.IGNORECASE) if isinstance(trigger, str) else None
+    match = re.fullmatch(r"(?:(?:redo|rebuild) )?(?:make my )?weekly ocado(?: again)?(?:\s*,?\s+with\s+(.+))?", trigger.strip(), re.IGNORECASE) if isinstance(trigger, str) else None
     if not match:
         raise ocado.OcadoError("Run this workflow only for the user's explicit 'weekly ocado' request.")
     if match[1] and not recipes:
@@ -183,6 +183,7 @@ def run(trigger: str, recipes: list[str] | None = None, *, _redo_plan_id: str | 
         path = run_path(order["order_id"])
         previous = read_run(path)
         redo = load_redo(_redo_plan_id) if _redo_plan_id is not None else None
+        repeat = bool(previous) and redo is None
         if redo:
             if not previous or previous.get("state") != "ready_for_checkout":
                 raise ocado.OcadoError("The previous weekly run now needs review. A redo is not permitted.")
@@ -191,13 +192,10 @@ def run(trigger: str, recipes: list[str] | None = None, *, _redo_plan_id: str | 
                     or redo["previous_fingerprint"] != edit.fingerprint(previous) or redo["target"] != recipe):
                 raise ocado.OcadoError("The order, weekly list, recipes or prior run changed since the redo preview. Prepare a new preview and confirm it again.")
         elif previous:
-            if previous.get("state") == "ready_for_checkout":
-                return {"status": "already_prepared", "delivery": previous["delivery"],
-                        "recipes": previous.get("recipe", {}).get("recipes", []),
-                        "prepared_at": previous["prepared_at"],
-                        "note": "Weekly Ocado already prepared this booked order. This request made no changes, preserving later edits. If the user explicitly wants to rebuild it, use ocado_plan_weekly_redo and obtain confirmation before ocado_apply_weekly_redo. Do not delete run records."}
-            raise ocado.OcadoError("A weekly run was already attempted for this order and needs manual review. It will not be repeated or cleared automatically.")
-        if not redo:
+            if previous.get("state") != "ready_for_checkout":
+                raise ocado.OcadoError("A weekly run was already attempted for this order and needs manual review. It will not be repeated or cleared automatically.")
+            validate_redo_order(order)
+        if not redo and not repeat:
             edit.validate_editable_order(order)
         baseline = redo["baseline"] if redo else {item["product_id"]: item["quantity"] for item in order["items"] if item["quantity"]}
         if len({item["product_id"] for item in order["items"]}) != len(order["items"]):
@@ -222,13 +220,24 @@ def run(trigger: str, recipes: list[str] | None = None, *, _redo_plan_id: str | 
                     yoto.write_private(archive, previous)
                     redo["state"] = "applying"
                     yoto.write_private(redo_path(_redo_plan_id), redo)
+                elif repeat:
+                    if context["isOrderUnderEdit"] and context.get("orderId") != order["order_id"]:
+                        raise ocado.OcadoError("Another order is being edited. The requested weekly order was not changed.")
+                    already_editing = context["isOrderUnderEdit"]
+                    if already_editing:
+                        baseline = {p: q for p, q in edit.quantities(current_cart).items() if q}
+                    archive = yoto.home() / "ocado-weekly-history" / f"{edit.fingerprint(order['order_id'])}-{time.time_ns()}.json"
+                    yoto.write_private(archive, previous)
                 elif context["isOrderUnderEdit"]:
                     raise ocado.OcadoError("An order is already being edited. Finish or cancel it on Ocado before running weekly Ocado.")
                 # Keep the standalone trolley snapshot private for diagnosing an interrupted run.
                 state["original_standalone_trolley"] = current_cart if not already_editing else None
                 if redo:
                     state["redo_plan_id"] = _redo_plan_id
+                if redo or repeat:
                     state["original_edit_trolley"] = current_cart if already_editing else None
+                if repeat:
+                    state["repeated_by_user_request"] = True
                 yoto.write_private(path, state)  # Claim this order before the first remote write.
                 phase = "opening_order"
                 if not already_editing:

@@ -40,8 +40,9 @@ class WeeklyRedoTests(unittest.TestCase):
         with self.assertRaisesRegex(ocado.OcadoError,'already attempted'):
             weekly.apply_redo(preview['plan_id'],True)
         self.assertEqual(len(self.posts),writes)
-        self.assertEqual(weekly.run('weekly ocado')['status'],'already_prepared')
-        self.assertEqual(len(self.posts),writes)
+        self.assertEqual(weekly.run('weekly ocado')['status'],'ready_for_checkout')
+        self.assertGreater(len(self.posts),writes)
+        self.assertEqual({p:q for p,q in self.cart.items() if q},{'milk':4,'juice':1})
 
     def test_unconfirmed_expired_and_stale_cart_preview_do_not_write(self):
         preview=self.preview()

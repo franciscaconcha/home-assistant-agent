@@ -75,12 +75,12 @@ browser session capture. If Ocado challenges search/product requests, use the no
 browser and capture the products with the existing [Ocado login helper](ocado.md).
 Do not guess IDs, retry blocked endpoints in a loop, or replace requested products.
 
-A prepared order's repeat guard still applies to ordinary weekly requests. To rebuild
-that same order with different recipes, explicitly ask **Redo weekly Ocado with recipe
-one and recipe two**. The bot uses `ocado_plan_weekly_redo`, shows the delivery, full
-replacement list and exact changes, then waits for your confirmation before applying.
-Later additions will be removed as part of that replacement. See the
-[weekly redo workflow](ocado.md#redo-an-already-prepared-weekly-order).
+Every new direct **weekly Ocado** request rebuilds the next booked order, including an
+already prepared delivery, without asking for confirmation. It replaces later additions
+and uses only the recipes named in the new request. A plain **weekly Ocado** uses only
+staples. **Redo weekly Ocado with recipe one and recipe two** works the same way. See
+[repeat requests](ocado.md#redo-an-already-prepared-weekly-order). Failed/uncertain runs
+still need manual review; the bot does not automatically retry a failed tool call.
 
 ## Upgrade the droplet
 
