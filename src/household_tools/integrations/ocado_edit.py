@@ -93,8 +93,12 @@ def order_fingerprint(order: dict) -> str:
 
 def editable_order() -> dict:
     order = ocado.next_order()["order"]
+    return validate_editable_order(order)
+
+
+def validate_editable_order(order) -> dict:
     if order is None or not isinstance(order.get("items"), list):
-        raise ocado.OcadoError("No readable upcoming Reserved order is available for editing.")
+        raise ocado.OcadoError("No readable upcoming order is available for editing.")
     if order.get("is_editable") is not True or order.get("is_under_edit") is not False:
         raise ocado.OcadoError("The next order is not editable or is already being edited. Review it on Ocado's website.")
     deadline = order.get("guaranteed_editable_by")

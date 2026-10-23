@@ -181,3 +181,102 @@ Editing contracts were inspected in that public bundle: the order-edit customer 
 active-cart quantity deltas, and the fixed cart-order identity query. These are internal
 website routes, not a supported public customer API. No checkout, cancellation, payment,
 or trolley-merge route is exposed by this implementation.
+
+## Weekly Ocado: replace the next booked order
+
+The optional `ocado_weekly_shop` workflow handles a direct **weekly Ocado** or
+**make my weekly Ocado** message, including when addressing the bot in WhatsApp. That
+request authorizes the whole saved workflow, so there is no extra preview/confirmation
+for the replacement itself. The saved products must have been confirmed beforehand.
+
+It selects the next booked delivery (Reserved or one-off), refuses a non-editable order
+without skipping to a later delivery, opens its edit session, verifies the full starting
+trolley, removes all its items, verifies that it is empty, adds the saved products, and
+verifies the exact final quantities. It then replies with the delivery, item summary,
+known subtotal and a checkout link. It never submits checkout or changes the slot.
+
+**Ready for checkout means the draft contents were verified.** The order is not confirmed
+as saved, and minimum spend, availability and payment/checkout checks remain on Ocado.
+Open the correct booked order and complete its save/checkout before the deadline.
+
+### Private weekly list
+
+The file is `data/ocado-weekly.json` on the host (`/opt/data/ocado-weekly.json` inside the
+container). It is excluded from Git and Docker builds. It has this structure; replace the
+capitalised placeholders with confirmed values before saving:
+
+```json
+{
+  "mode": "ready_for_checkout",
+  "items": [
+    {
+      "product_id": "EXACT_PRODUCT_ID_FROM_OCADO",
+      "name": "EXACT_CONFIRMED_PRODUCT_NAME_AND_PACK_SIZE",
+      "quantity": 1
+    }
+  ]
+}
+```
+
+Edit it directly on the droplet with:
+
+```sh
+nano ~/hermes-home/data/ocado-weekly.json
+```
+
+No restart is required: the list is read for every new run. Quantities are pack counts,
+not litres or individual units within a multipack. Use the actual Ocado product ID when
+changing products; names are labels, not search terms. The list must be nonempty, with
+unique IDs and integer quantities from 1 to 50. Invalid JSON or invalid entries stop the
+workflow before it opens an order. Keep `mode` as `ready_for_checkout`.
+
+Alternatively, tell the bot to change the weekly list. It should read real IDs from
+Ocado/browser data, confirm exact products, pack sizes and quantities with you, then use
+`ocado_set_weekly_list`. That tool only updates the private file and backs up its previous
+contents. It never updates an order. `ocado_weekly_list` shows the saved list.
+
+### Deploy and enable
+
+After pulling and building the latest code, copy an existing private list from the Mac:
+
+```sh
+scp -i ~/.ssh/hermes_digitalocean \
+  /Users/fcr/repositories/hermes-home/data/ocado-weekly.json \
+  hermes@YOUR_DROPLET_IP:~/hermes-home/data/ocado-weekly.json
+```
+
+Then on the droplet:
+
+```sh
+make down
+make ocado-enable-weekly
+make up
+```
+
+The enable command preserves and backs up your runtime config and instructions, adds the
+three weekly tools, explicitly enables the weekly workflow and allows a longer tool
+request timeout. It does not enable the separate general order-edit writer. Send
+`/reload-mcp` on WhatsApp, then ask to see the weekly list before the first run.
+
+A saved list can also be set through WhatsApp after enabling the tools. If it is absent,
+the workflow refuses to alter an order. Keep the shared bot out of concurrent edits on
+the same order through the Ocado app/website while a run is in progress.
+
+### Repeat requests and interrupted runs
+
+A private run record under `data/ocado-weekly-runs/` is saved before the first write. It
+includes the original order and standalone trolley for diagnosis. Requests for a
+successfully prepared order return **already prepared**, preserving later edits, even if
+you subsequently change the saved weekly list. The updated list is used for the next
+unprocessed booked order. Existing standalone trolleys are not intentionally merged or
+cleared by this workflow.
+
+If a request times out, an item is unavailable, the order identity changes or any readback
+fails, the workflow stops and the same order is blocked from automatic replay. The edit
+trolley may be partly changed or empty. Review it on Ocado manually; do not delete the
+run record to force a retry without inspecting the actual order. No substitutions or
+checkout occur. The bot reports failure instead of claiming the weekly shop is ready.
+
+The workflow is tested with mocked HTTP, including multi-batch clearing, product additions,
+partial failure and duplicate requests. No live order replacement was performed during
+development. The first real run still needs verification on the droplet.

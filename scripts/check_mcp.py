@@ -23,6 +23,7 @@ async def check(directory: str) -> None:
                 "household_status", "yoto_list_players", "yoto_player_status",
                 "yoto_playback", "yoto_set_volume", "ocado_basket", "ocado_next_order",
                 "ocado_plan_order_changes", "ocado_apply_order_changes",
+                "ocado_weekly_list", "ocado_set_weekly_list", "ocado_weekly_shop",
             }
             result = await session.call_tool("household_status", {})
             assert not result.isError, result
@@ -35,6 +36,8 @@ async def check(directory: str) -> None:
             assert missing.isError, missing
             disabled = await session.call_tool("ocado_apply_order_changes", {"plan_id": "0" * 32, "confirmed": True})
             assert disabled.isError, disabled
+            weekly = await session.call_tool("ocado_weekly_shop", {"trigger": "weekly ocado"})
+            assert weekly.isError, weekly
     print("MCP stdio discovery and household_status passed.")
 
 

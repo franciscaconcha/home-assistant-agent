@@ -70,7 +70,7 @@ class EditTests(unittest.TestCase):
             return httpx.Response(self.quantity_failure, text="PRIVATE_RESPONSE")
         if not self.ignore_quantity_write:
             for change in payload:
-                self.cart[change["productId"]] += change["quantity"]
+                self.cart[change["productId"]] = self.cart.get(change["productId"], 0) + change["quantity"]
         return httpx.Response(200)
 
     def preview(self):

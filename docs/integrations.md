@@ -1,9 +1,11 @@
 # Adding household tools
 
 The server exposes `household_status` and Yoto player tools. Follow [Yoto setup](yoto.md)
-to authorise an account and select allowed players. [Ocado setup](ocado.md) connects a
+to authorise an account and select allowed players. [Ocado setup](ocado.md) connects
 current-trolley and next-order tools using an operator-provided browser session, plus
-optional confirmed draft quantity edits for the next Reserved order.
+optional confirmed draft quantity edits for the next Reserved order. The separately enabled
+weekly workflow clears and refills the next booked order with a private fixed list; checkout
+remains manual.
 No real credentials or fake shopping/player data are included.
 
 Add adapter modules under `src/household_tools/integrations/` when implementing each
