@@ -21,7 +21,7 @@ async def check(directory: str) -> None:
             tools = await session.list_tools()
             assert {tool.name for tool in tools.tools} == {
                 "household_status", "yoto_list_players", "yoto_player_status",
-                "yoto_playback", "yoto_set_volume", "ocado_basket",
+                "yoto_playback", "yoto_set_volume", "ocado_basket", "ocado_next_order",
             }
             result = await session.call_tool("household_status", {})
             assert not result.isError, result

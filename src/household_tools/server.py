@@ -47,6 +47,12 @@ def ocado_basket() -> dict:
     return ocado.basket()
 
 
+@mcp.tool()
+def ocado_next_order(reserved_only: bool = True) -> dict:
+    """Read the next scheduled Ocado Reserved order, delivery, editability and items. Set reserved_only=false to include one-off orders. Does not open it for editing."""
+    return ocado.next_order(reserved_only)
+
+
 def main() -> None:
     mcp.run(transport="stdio")
 

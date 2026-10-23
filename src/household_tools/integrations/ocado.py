@@ -1,4 +1,4 @@
-"""Read-only Ocado trolley adapter using the account owner's browser session.
+"""Read-only Ocado trolley and upcoming orders using the owner's browser session.
 
 Endpoint and response-shape reference: abracadabra50/open-supermarkets,
 revision aff6880435ab3c43f4f79f3896dd4cf40142171c; see THIRD_PARTY_NOTICES.md.
@@ -9,7 +9,9 @@ import math
 import re
 import time
 from decimal import Decimal, InvalidOperation
+from datetime import datetime, timezone
 from http.cookiejar import Cookie
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import httpx
 
@@ -18,7 +20,19 @@ from household_tools.integrations.yoto import home
 ORIGIN = "https://www.ocado.com"
 CART = "/api/cart/v1/carts/active?cartProductSorting=CATEGORIES"
 PRODUCTS = "/api/webproductpagews/v6/products"
-READ_REQUESTS = {("GET", CART)}
+ORDERS_PAGE = "/orders"
+# Fixed read-only selection checked against Ocado's public application bundle
+# /static/index-CKdmGrK1.js and the account owner's normal Orders page.
+UPCOMING_QUERY = """query GetUpcomingOrders {
+  ordersUpcoming {
+    orderId status isRecurring
+    prices { total { amount currency } }
+    editInfo { isEditable isUnderEdit edited guaranteedEditableBy restrictions { description } }
+    slot { slotId type timeWindow { start end timeZone } }
+  }
+}"""
+UPCOMING_REQUEST = {"operationName": "GetUpcomingOrders", "query": UPCOMING_QUERY, "variables": {}}
+READ_REQUESTS = {("GET", CART), ("GET", ORDERS_PAGE)}
 
 
 class OcadoError(ValueError):
@@ -122,8 +136,11 @@ def cookie_jar(session: dict) -> httpx.Cookies:
 
 
 def read_request(client: httpx.Client, method: str, path: str, **kwargs) -> httpx.Response:
-    if (method, path) not in READ_REQUESTS:
-        raise OcadoError("This integration permits only current-trolley reads.")
+    detail_read = method == "GET" and re.fullmatch(r"/api/order/v6/orders/[A-Za-z0-9_-]{1,200}", path)
+    query_read = (method == "POST" and path == "/graphql" and
+                  kwargs.get("json") == UPCOMING_REQUEST and set(kwargs) <= {"json", "headers"})
+    if (method, path) not in READ_REQUESTS and not detail_read and not query_read:
+        raise OcadoError("This integration permits only trolley and upcoming-order read operations.")
     try:
         response = client.request(method, ORIGIN + path, **kwargs)
     except httpx.HTTPError:
@@ -199,3 +216,124 @@ def basket() -> dict:
         if unknown:
             result["warning"] = f"{unknown} item lines have no saved name. Open the current trolley with make ocado-login on your Mac and copy the refreshed session to the droplet."
         return result
+
+
+def order_timestamp(value, zone: str | None = None) -> datetime:
+    if not isinstance(value, str):
+        raise OcadoError("Ocado returned an order without a valid delivery timestamp.")
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        if parsed.tzinfo is None:
+            if not zone:
+                raise ValueError
+            parsed = parsed.replace(tzinfo=ZoneInfo(zone))
+        return parsed
+    except (ValueError, ZoneInfoNotFoundError):
+        raise OcadoError("Ocado returned an ambiguous order timestamp; check the order on its website.") from None
+
+
+def order_summary(order: dict) -> dict:
+    """Expose only order identity, delivery, total, and the supplied editing information."""
+    try:
+        order_id = order["orderId"]
+        if not isinstance(order_id, str) or not re.fullmatch(r"[A-Za-z0-9_-]{1,200}", order_id):
+            raise ValueError
+        slot = order["slot"]
+        window = slot["timeWindow"]
+        start = order_timestamp(window["start"], window.get("timeZone"))
+        end = order_timestamp(window["end"], window.get("timeZone"))
+        if end <= start:
+            raise ValueError
+        edit = order.get("editInfo") or {}
+        total = (order.get("prices") or {}).get("total") or {}
+        restrictions = edit.get("restrictions") or []
+        return {
+            "order_id": order_id, "status": order.get("status"),
+            "is_reserved": order.get("isRecurring") is True,
+            "delivery": {"start": start.isoformat(), "end": end.isoformat(),
+                         "time_zone": window.get("timeZone"), "slot_id": slot.get("slotId")},
+            "is_editable": edit.get("isEditable") if type(edit.get("isEditable")) is bool else None,
+            "is_under_edit": edit.get("isUnderEdit") if type(edit.get("isUnderEdit")) is bool else None,
+            "guaranteed_editable_by": edit.get("guaranteedEditableBy"),
+            "editing_restrictions": [r["description"] for r in restrictions
+                                     if isinstance(r, dict) and isinstance(r.get("description"), str)],
+            "total": amount(total.get("amount")), "currency": total.get("currency"),
+        }
+    except (KeyError, TypeError, AttributeError, ValueError) as error:
+        if isinstance(error, OcadoError):
+            raise
+        raise OcadoError("Ocado's upcoming-order format was not recognised; no order was selected.") from None
+
+
+def select_next_order(orders: list, reserved_only: bool = True, now: datetime | None = None) -> dict | None:
+    now = now or datetime.now(timezone.utc)
+    candidates = []
+    for order in orders:
+        if not isinstance(order, dict):
+            raise OcadoError("Ocado returned an invalid upcoming-order entry.")
+        if reserved_only and order.get("isRecurring") is not True:
+            continue
+        summary = order_summary(order)
+        if order_timestamp(summary["delivery"]["end"]) > now:
+            candidates.append(summary)
+    if not candidates:
+        return None
+    # Choose the nearest delivery, even when it is no longer editable. Do not silently
+    # skip it and accidentally target the following week's order.
+    return min(candidates, key=lambda item: order_timestamp(item["delivery"]["start"]))
+
+
+def order_items(detail: dict, order_id: str) -> list[dict]:
+    try:
+        entry = detail["entities"]["order"][order_id]
+        if entry.get("orderId") != order_id:
+            raise ValueError
+        products = entry["groupedProducts"]["products"]
+        if not isinstance(products, list):
+            raise ValueError
+        items = []
+        for product in products:
+            if not isinstance(product, dict) or not isinstance(product.get("productId"), str):
+                raise ValueError
+            quantity = product.get("quantity")
+            if type(quantity) is not int or quantity < 0:
+                raise ValueError
+            prices = product.get("prices") or {}
+            unit, total = prices.get("unit") or {}, prices.get("total") or {}
+            items.append({"product_id": product["productId"],
+                          "name": product.get("name") if isinstance(product.get("name"), str) else None,
+                          "quantity": quantity, "unit_price": amount(unit.get("amount")),
+                          "line_total": amount(total.get("amount"))})
+        return items
+    except (KeyError, TypeError, AttributeError, ValueError):
+        raise OcadoError("Ocado's order item details were not recognised or did not match the selected order.") from None
+
+
+def next_order(reserved_only: bool = True) -> dict:
+    session = load_session()
+    with httpx.Client(cookies=cookie_jar(session), headers={"User-Agent": session["user_agent"],
+                      "Accept": "application/json"}, timeout=20, follow_redirects=False) as client:
+        page = read_request(client, "GET", ORDERS_PAGE, headers={"Accept": "text/html"})
+        match = re.search(r'"csrf"\s*:\s*\{\s*"token"\s*:\s*"([^"\r\n]+)"', page.text)
+        if not match:
+            raise OcadoError("Ocado's Orders page did not provide its request token. Sign in normally and refresh the saved session.")
+        value = read_json(read_request(client, "POST", "/graphql", json=UPCOMING_REQUEST,
+                                       headers={"x-csrf-token": match[1]}))
+        if value.get("errors"):
+            raise OcadoError("Ocado could not answer its read-only upcoming-orders query. No order was selected or changed.")
+        orders = (value.get("data") or {}).get("ordersUpcoming")
+        if not isinstance(orders, list):
+            raise OcadoError("Ocado's upcoming-order list was not recognised; refusing to report that no orders exist.")
+        summary = select_next_order(orders, reserved_only)
+        if summary is None:
+            return {"order": None, "reserved_only": reserved_only,
+                    "note": "No matching upcoming orders were returned. No trolley was created or changed."}
+        summary["items"] = None
+        summary["items_source"] = "Live selected-order details, separate from the active trolley."
+        try:
+            detail = read_json(read_request(client, "GET", "/api/order/v6/orders/" + summary["order_id"]))
+            summary["items"] = order_items(detail, summary["order_id"])
+        except OcadoError as error:
+            summary["warning"] = "Order summary was read, but item details are unavailable: " + str(error)
+        return {"order": summary, "reserved_only": reserved_only,
+                "note": "Read only. This does not enter edit mode or alter the active trolley. guaranteed_editable_by is Ocado's supplied guarantee, not a promise that later editing is possible."}

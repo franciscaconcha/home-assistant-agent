@@ -173,4 +173,5 @@ class OcadoTests(unittest.TestCase):
         household = current["mcp_servers"]["household"]
         self.assertIn("yoto_playback", household["tools"]["include"])
         self.assertIn("ocado_basket", household["tools"]["include"])
+        self.assertIn("ocado_next_order", household["tools"]["include"])
         self.assertEqual(household["env"], {"HERMES_HOME": self.directory.name, "OTHER_SETTING": "keep"})

@@ -1,9 +1,15 @@
 # Read the current Ocado trolley
 
-This integration exposes one read-only MCP tool, `ocado_basket`. It returns the current
+The read-only MCP tool `ocado_basket` returns the current
 trolley's live quantities and known line prices/subtotal, with names saved during a normal
 Mac browser visit and matched by product ID. Names are a snapshot, not a live lookup. It does
 not read saved shopping lists or modify your basket, delivery details, orders or payments.
+
+`ocado_next_order` separately reads the next scheduled **Ocado Reserved** order, including
+its delivery window, order total, current editing eligibility, Ocado's
+`guaranteedEditableBy` timestamp, and line items. These item names come from the live order
+details, not the trolley-name snapshot. It does not enter edit mode or change the active
+trolley. Use `reserved_only=false` to include one-off scheduled orders as well.
 
 The connection uses Ocado's internal website API and your own browser cookies. It is
 unofficial and may break when Ocado changes its website. Sessions expire; bot protection
@@ -73,6 +79,36 @@ your other agent features while we diagnose Ocado.
 
 On **WhatsApp**, send `/reload-mcp`, then **Use ocado_basket to show my current trolley**.
 
+## Read your next scheduled order
+
+After pulling and rebuilding the latest version on the droplet, run:
+
+```sh
+make down
+make ocado-configure
+make ocado-order-check
+make up
+```
+
+Existing sessions can be reused. On WhatsApp send `/reload-mcp`, then ask **Use
+ocado_next_order to show my next Reserved delivery, whether it is editable, and its items**.
+The check command prints the delivery window, editability, guaranteed-editing timestamp,
+and item-line count; it does not dump the order ID, address, payment details or item names.
+
+The reader uses the Orders page's normal request token, the website's fixed
+`GetUpcomingOrders` GraphQL query, and a GET of the selected order's detail. Only that
+fixed query is allowed; arbitrary GraphQL requests and mutations are rejected. The
+nearest order is reported even if no longer editable, rather than silently selecting the
+following week's order. No matching order is reported explicitly without creating a trolley.
+
+`guaranteedEditableBy` is the name of the timestamp Ocado supplies. We do not promise
+editing after that point or equate it to a later possible cut-off. If item details fail,
+the valid delivery summary remains available and items are marked unavailable.
+
+**Order editing is not implemented.** Selecting an order for editing, handling any existing
+trolley, applying changes, and saving/checkout require a separate implementation and live
+verification against the correct order identity.
+
 ## Limits and troubleshooting
 
 - Authentication failure, a redirect, bot challenge, or unrecognised response causes an
@@ -82,6 +118,7 @@ On **WhatsApp**, send `/reload-mcp`, then **Use ocado_basket to show my current 
   that snapshot have unknown names and trigger a warning; run the login/sync again.
   The droplet no longer calls the product-information endpoint because it returned HTTP
   202 during live testing. It reads only the trolley and uses saved names from the browser.
+  This limitation is specific to `ocado_basket`; order-detail names use a different read endpoint.
 - Missing prices remain unknown; delivery fees/promotions at checkout may change totals.
 - HTTP 202/403/429 may indicate Ocado blocked the request. Do not loop retries or try to
   bypass the challenge. Sign in normally or retry later. A datacentre restriction may mean
@@ -97,3 +134,8 @@ API routes and response shapes were checked against the community provider in
 [open-supermarkets at aff6880](https://github.com/abracadabra50/open-supermarkets/blob/aff6880435ab3c43f4f79f3896dd4cf40142171c/src/providers/ocado.ts).
 This is a source reference, not a claim that your account has been tested. We do not install
 that provider's broader checkout/basket-editing toolset. See `THIRD_PARTY_NOTICES.md`.
+
+Upcoming-order fields were also verified in Ocado's public application bundle
+`/static/index-CKdmGrK1.js` (`GetUpcomingOrders`) and its normal authenticated Orders view.
+The order-list and next Reserved order detail reads were verified on the Mac with the
+operator's session. Droplet access remains subject to Ocado's session and network controls.

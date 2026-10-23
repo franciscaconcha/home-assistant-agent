@@ -17,6 +17,7 @@ household-yoto-configure = "household_tools.yoto_setup:configure"
 household-ocado-login = "household_tools.ocado_setup:login"
 household-ocado-configure = "household_tools.ocado_setup:configure"
 household-ocado-check = "household_tools.ocado_setup:check"
+household-ocado-order-check = "household_tools.ocado_setup:order_check"
 
 [project.optional-dependencies]
 ocado-login = [

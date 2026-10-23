@@ -70,15 +70,15 @@ def configure() -> None:
         entry["timeout"] = max(entry.get("timeout", 90), 120)
         tools = entry.setdefault("tools", {})
         if "include" in tools:
-            tools["include"] = list(dict.fromkeys(tools["include"] + ["household_status", "ocado_basket"]))
+            tools["include"] = list(dict.fromkeys(tools["include"] + ["household_status", "ocado_basket", "ocado_next_order"]))
         elif not tools:
-            tools["include"] = ["household_status", "ocado_basket"]
+            tools["include"] = ["household_status", "ocado_basket", "ocado_next_order"]
         entry.setdefault("sampling", {"enabled": False})
         backup = path.with_name(f"config.before-ocado-{time.time_ns()}.yaml")
         backup.touch(mode=0o600, exist_ok=False)
         backup.write_text(original)
         yoto.write_private(path, config)
-        print("Ocado trolley tool enabled; existing Yoto, model and WhatsApp settings preserved.")
+        print("Ocado trolley and next-order tools enabled; existing Yoto, model and WhatsApp settings preserved.")
     except (OSError, ValueError, TypeError):
         raise SystemExit("Ocado configuration failed. Check the copied session and config.yaml; no credentials were printed.") from None
 
@@ -91,6 +91,25 @@ def check() -> None:
         print(f"Named item lines: {sum(item['name'] is not None for item in result['items'])} (from Mac browser snapshot).")
         if "warning" in result:
             print("Warning: " + result["warning"])
+    except ocado.OcadoError as error:
+        print(str(error), file=sys.stderr)
+        raise SystemExit(1) from None
+
+
+def order_check() -> None:
+    try:
+        result = ocado.next_order()
+        order = result["order"]
+        if order is None:
+            print("No upcoming Reserved order was returned by Ocado.")
+            return
+        print("Next Reserved order read succeeded.")
+        print("Delivery:", order["delivery"]["start"], "to", order["delivery"]["end"])
+        print("Editable:", order["is_editable"])
+        print("Guaranteed editable by:", order["guaranteed_editable_by"])
+        print("Order item lines:", len(order["items"]) if order["items"] is not None else "unavailable")
+        if "warning" in order:
+            print("Warning:", order["warning"])
     except ocado.OcadoError as error:
         print(str(error), file=sys.stderr)
         raise SystemExit(1) from None
