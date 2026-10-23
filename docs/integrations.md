@@ -5,7 +5,8 @@ to authorise an account and select allowed players. [Ocado setup](ocado.md) conn
 current-trolley and next-order tools using an operator-provided browser session, plus
 optional confirmed draft quantity edits for the next Reserved order. The separately enabled
 weekly workflow clears and refills the next booked order with a private fixed list; checkout
-remains manual.
+remains manual. [Recipe shopping lists](recipes.md) can be added to that workflow.
+Recipe files and their product mappings remain private runtime data.
 No real credentials or fake shopping/player data are included.
 
 Add adapter modules under `src/household_tools/integrations/` when implementing each

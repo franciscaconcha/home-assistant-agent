@@ -90,13 +90,17 @@ def batches(items):
         yield items[start:start + edit.MAX_CHANGES]
 
 
-def run(trigger: str) -> dict:
+def run(trigger: str, recipes: list[str] | None = None) -> dict:
     if os.environ.get("OCADO_WEEKLY_ENABLED") != "true":
         raise ocado.OcadoError("Weekly Ocado is disabled. Run make ocado-enable-weekly on the droplet first.")
-    if not isinstance(trigger, str) or trigger.strip().lower() not in {"weekly ocado", "make my weekly ocado"}:
+    match = re.fullmatch(r"(?:make my )?weekly ocado(?:\s*,?\s+with\s+(.+))?", trigger.strip(), re.IGNORECASE) if isinstance(trigger, str) else None
+    if not match:
         raise ocado.OcadoError("Run this workflow only for the user's explicit 'weekly ocado' request.")
+    if match[1] and not recipes:
+        raise ocado.OcadoError("This request names recipes. Resolve every requested recipe and pass their names; do not run a staples-only shop.")
     with edit.edit_lock():
-        recipe = load_recipe()
+        from household_tools.recipes import shopping_plan
+        recipe = shopping_plan(recipes, match[1])
         # Include one-off bookings as well: choose the next delivery, never skip to a later editable one.
         order = ocado.next_order(reserved_only=False)["order"]
         if order is None:
@@ -106,6 +110,7 @@ def run(trigger: str) -> dict:
         if previous:
             if previous.get("state") == "ready_for_checkout":
                 return {"status": "already_prepared", "delivery": previous["delivery"],
+                        "recipes": previous.get("recipe", {}).get("recipes", []),
                         "prepared_at": previous["prepared_at"],
                         "note": "Weekly Ocado already prepared this booked order. This request made no changes, preserving any later edits. Check Ocado for its current contents and saving/checkout status."}
             raise ocado.OcadoError("A weekly run was already attempted for this order and needs manual review. It will not be repeated or cleared automatically.")
@@ -162,6 +167,7 @@ def run(trigger: str) -> dict:
                 state.update(state="ready_for_checkout", subtotal=summary["subtotal"], currency=summary["currency"])
                 yoto.write_private(path, state)
                 return {"status": "ready_for_checkout", "delivery": order["delivery"], "items": recipe["items"],
+                        "recipes": recipe["recipes"], "breakdown": recipe["breakdown"],
                         "subtotal": summary["subtotal"], "currency": summary["currency"],
                         "checkout_url": ocado.ORIGIN + "/checkout/summary",
                         "note": "Notify the user: the booked order's edit trolley now contains exactly the weekly list. Open Ocado and review/save/check out before the deadline. Checkout was NOT submitted and the order is NOT confirmed as updated. Stock, minimum spend and checkout checks remain for Ocado."}

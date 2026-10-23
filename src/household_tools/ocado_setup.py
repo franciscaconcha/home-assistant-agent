@@ -82,6 +82,23 @@ draft contents verified, not saved or checkout validated. The user reviews and c
 checkout on Ocado. Never automatically retry a failed/uncertain weekly run or claim it
 completed. A repeated successful request must preserve any later edits.\n"""
 
+RECIPE_GUIDANCE = """\n\n<!-- ocado-recipes-v1 -->
+The weekly request can include recipes: 'weekly ocado, with greek chicken and cherry
+tomato mozzarella pasta'. List/read the saved recipes and pass ALL named recipes to
+ocado_weekly_shop in its recipes argument, along with the user's actual trigger phrase.
+The user authorizes staples PLUS those recipes. Never run only the staples when a
+requested recipe is unknown, ambiguous or missing product mappings; clarify first.
+Use ocado_weekly_plan for a requested preview, without editing any order. Shared
+product quantities ADD across staples and recipes, in packs; never assume ingredients
+already at home or scale by servings. Recipe quantities are for one preparation.
+Recipes live privately in recipes/*.json under HERMES_HOME. Use household_save_recipe
+to save/update them from the user's instructions. Preserve other fields when editing.
+Use product_id=null for unresolved draft ingredients. Never invent IDs or choose an
+unspecified pack/brand. Once exact products and pack counts are confirmed, save real IDs
+with confirmed=true. Add aliases for agreed alternate names. Creating/editing recipes
+does not modify weekly staples or any Ocado order. Repeated shops for an already
+processed delivery still make no changes, even if different recipes are requested.\n"""
+
 
 def configure(enable_order_edits: bool = False, enable_weekly: bool = False) -> None:
     try:
@@ -94,7 +111,8 @@ def configure(enable_order_edits: bool = False, enable_weekly: bool = False) -> 
         entry.setdefault("env", {})["HERMES_HOME"] = str(yoto.home())
         entry["timeout"] = max(entry.get("timeout", 90), 120)
         tools = entry.setdefault("tools", {})
-        added = ["household_status", "ocado_basket", "ocado_next_order", "ocado_plan_order_changes"]
+        added = ["household_status", "ocado_basket", "ocado_next_order", "ocado_plan_order_changes",
+                 "household_list_recipes", "household_get_recipe", "household_save_recipe", "ocado_weekly_plan"]
         if enable_order_edits:
             added.append("ocado_apply_order_changes")
             entry["env"]["OCADO_ORDER_EDITING_ENABLED"] = "true"
@@ -119,6 +137,8 @@ def configure(enable_order_edits: bool = False, enable_weekly: bool = False) -> 
                 guidance += EDIT_GUIDANCE
             if enable_weekly and "<!-- ocado-weekly-workflow -->" not in previous:
                 guidance += WEEKLY_GUIDANCE
+            if enable_weekly and "<!-- ocado-recipes-v1 -->" not in previous:
+                guidance += RECIPE_GUIDANCE
             if guidance:
                 if soul.exists():
                     backup_soul = soul.with_name(f"SOUL.before-ocado-{time.time_ns()}.md")

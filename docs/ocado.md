@@ -280,3 +280,10 @@ checkout occur. The bot reports failure instead of claiming the weekly shop is r
 The workflow is tested with mocked HTTP, including multi-batch clearing, product additions,
 partial failure and duplicate requests. No live order replacement was performed during
 development. The first real run still needs verification on the droplet.
+
+## Add recipes to the weekly shop
+
+See [Recipe shopping lists](recipes.md) to store private recipe files and request
+**weekly Ocado, with recipe one and recipe two**. Quantities for the same product add
+across staples and all selected recipes. Draft or unknown recipes stop the shop before
+an order is opened. The staples file, checkout boundary and repeat guard stay in effect.

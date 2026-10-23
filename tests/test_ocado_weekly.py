@@ -7,6 +7,7 @@ from unittest.mock import patch
 import yaml
 
 from household_tools import ocado_setup
+from household_tools import recipes
 from household_tools.integrations import ocado, ocado_edit as edit, ocado_weekly as weekly, yoto
 import test_ocado_edit as edit_tests
 
@@ -150,4 +151,34 @@ class WeeklyTests(unittest.TestCase):
         self.assertIn("yoto_playback", entry["tools"]["include"])
         self.assertGreaterEqual(entry["timeout"], 300)
         self.assertEqual(soul.read_text().count("<!-- ocado-weekly-workflow -->"), 1)
+        self.assertEqual(soul.read_text().count("<!-- ocado-recipes-v1 -->"), 1)
+        self.assertIn("household_save_recipe", entry["tools"]["include"])
+        self.assertIn("ocado_weekly_plan", entry["tools"]["include"])
         self.assertTrue(soul.read_text().startswith("Keep my instructions."))
+
+    def test_weekly_with_recipes_adds_merged_quantities_and_records_selected_recipes(self):
+        recipes.save_recipe('meal-one','Meal one',[
+            {'product_id':'milk','name':'Whole milk 1L','quantity':1},
+            {'product_id':'extra','name':'Extra product','quantity':2}],confirmed=True)
+        result=weekly.run('weekly ocado, with Meal one',['Meal one'])
+        self.assertEqual(result['status'],'ready_for_checkout')
+        self.assertEqual({p:q for p,q in self.cart.items() if q},{'milk':5,'juice':1,'extra':2})
+        self.assertEqual(result['recipes'],[{'id':'meal-one','name':'Meal one','servings':None}])
+        state=json.loads(weekly.run_path('order-next').read_text())
+        self.assertEqual(state['recipe']['recipes'],result['recipes'])
+        self.assertEqual(weekly.load_recipe()['items'],recipe())
+        writes=len(self.posts)
+        repeat=weekly.run('weekly ocado')
+        self.assertEqual(repeat['recipes'],result['recipes'])
+        self.assertEqual(len(self.posts),writes)
+
+    def test_upgrade_adds_recipe_guidance_when_old_weekly_marker_already_exists(self):
+        path=yoto.home()/'config.yaml'
+        path.write_text('mcp_servers: {}\n')
+        soul=yoto.home()/'SOUL.md'
+        soul.write_text('Existing custom instructions.'+ocado_setup.WEEKLY_GUIDANCE)
+        ocado_setup.enable_weekly()
+        text=soul.read_text()
+        self.assertEqual(text.count('<!-- ocado-weekly-workflow -->'),1)
+        self.assertEqual(text.count('<!-- ocado-recipes-v1 -->'),1)
+        self.assertTrue(text.startswith('Existing custom instructions.'))
