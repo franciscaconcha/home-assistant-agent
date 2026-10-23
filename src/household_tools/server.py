@@ -88,6 +88,18 @@ def ocado_weekly_shop(trigger: str, recipes: list[str] | None = None) -> dict:
 
 
 @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
+def ocado_plan_weekly_redo(recipes: list[str] | None = None) -> dict:
+    """When the user explicitly wants to redo/rebuild an already prepared weekly order, preview replacing its CURRENT contents with staples plus ALL requested recipes. Can reuse the correct order's active edit trolley. Show delivery, full replacement list and before/after changes, including removed later additions; wait for explicit user confirmation. No Ocado changes. Failed/uncertain prior runs still require manual review."""
+    return ocado_weekly.prepare_redo(recipes)
+
+
+@mcp.tool(annotations=ToolAnnotations(readOnlyHint=False, destructiveHint=True, idempotentHint=False))
+def ocado_apply_weekly_redo(plan_id: str, confirmed: bool = False) -> dict:
+    """Apply a fresh weekly REDO preview only after the user explicitly confirms its delivery and full replacement. Set confirmed=true only then. Clears current order trolley, including later additions, and rebuilds the frozen staples/recipe plan. Stale/attempted previews fail. Never retry after an uncertain outcome. No checkout submitted."""
+    return ocado_weekly.apply_redo(plan_id, confirmed)
+
+
+@mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
 def household_list_recipes() -> list[dict]:
     """List saved recipes, aliases and whether exact shopping products still need mapping. No Ocado requests."""
     return recipe_store.list_recipes()

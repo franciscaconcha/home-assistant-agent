@@ -26,6 +26,7 @@ async def check(directory: str) -> None:
                 "ocado_plan_order_changes", "ocado_apply_order_changes",
                 "ocado_weekly_list", "ocado_set_weekly_list", "ocado_weekly_shop",
                 "household_list_recipes", "household_get_recipe", "household_save_recipe", "ocado_weekly_plan",
+                "ocado_plan_weekly_redo", "ocado_apply_weekly_redo",
             }
             result = await session.call_tool("household_status", {})
             assert not result.isError, result

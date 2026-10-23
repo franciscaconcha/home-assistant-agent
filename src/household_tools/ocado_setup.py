@@ -99,6 +99,18 @@ with confirmed=true. Add aliases for agreed alternate names. Creating/editing re
 does not modify weekly staples or any Ocado order. Repeated shops for an already
 processed delivery still make no changes, even if different recipes are requested.\n"""
 
+REDO_GUIDANCE = """\n\n<!-- ocado-weekly-redo-v1 -->
+Ordinary repeated weekly Ocado messages still preserve the order. If the user explicitly
+asks to redo/rebuild the weekly order, use ocado_plan_weekly_redo with ALL requested
+recipes. Show its delivery, complete replacement list and before/after changes, including
+any later additions being removed. Wait for explicit confirmation before calling
+ocado_apply_weekly_redo with confirmed=true. This is the supported exception to the
+repeat guard; do not delete run records or use shell code to bypass it. A redo preview
+expires in 10 minutes and fails if the trolley, order, recipe/staples or previous run
+changes. It can use the correct order's existing edit trolley. Interrupted or uncertain
+prior runs still require manual review. Checkout remains manual; never retry an uncertain
+redo automatically.\n"""
+
 
 def configure(enable_order_edits: bool = False, enable_weekly: bool = False) -> None:
     try:
@@ -117,7 +129,8 @@ def configure(enable_order_edits: bool = False, enable_weekly: bool = False) -> 
             added.append("ocado_apply_order_changes")
             entry["env"]["OCADO_ORDER_EDITING_ENABLED"] = "true"
         if enable_weekly:
-            added += ["ocado_weekly_list", "ocado_set_weekly_list", "ocado_weekly_shop"]
+            added += ["ocado_weekly_list", "ocado_set_weekly_list", "ocado_weekly_shop",
+                      "ocado_plan_weekly_redo", "ocado_apply_weekly_redo"]
             entry["env"]["OCADO_WEEKLY_ENABLED"] = "true"
             entry["timeout"] = max(entry["timeout"], 300)
         if "include" in tools:
@@ -139,6 +152,8 @@ def configure(enable_order_edits: bool = False, enable_weekly: bool = False) -> 
                 guidance += WEEKLY_GUIDANCE
             if enable_weekly and "<!-- ocado-recipes-v1 -->" not in previous:
                 guidance += RECIPE_GUIDANCE
+            if enable_weekly and "<!-- ocado-weekly-redo-v1 -->" not in previous:
+                guidance += REDO_GUIDANCE
             if guidance:
                 if soul.exists():
                     backup_soul = soul.with_name(f"SOUL.before-ocado-{time.time_ns()}.md")
