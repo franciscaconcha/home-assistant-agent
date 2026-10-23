@@ -58,7 +58,16 @@ def login() -> None:
         raise SystemExit("Ocado login/session capture did not finish. Check the browser, then retry make ocado-login. No password or cookie contents were printed.") from None
 
 
-def configure() -> None:
+EDIT_GUIDANCE = """\n\n<!-- ocado-order-editing -->
+For Ocado order edits, use ocado_plan_order_changes first. Show the delivery and exact
+before/after quantities and wait for explicit user confirmation before calling
+ocado_apply_order_changes with confirmed=true. A draft is not a saved order: tell the
+user to review and save/check out on Ocado's website. Never retry an uncertain or partial
+edit automatically. Never merge or discard another trolley. Adding new products is
+not supported by this tool.\n"""
+
+
+def configure(enable_order_edits: bool = False) -> None:
     try:
         ocado.load_session()  # Validates structure, never prints the session.
         path = yoto.home() / "config.yaml"
@@ -69,18 +78,38 @@ def configure() -> None:
         entry.setdefault("env", {})["HERMES_HOME"] = str(yoto.home())
         entry["timeout"] = max(entry.get("timeout", 90), 120)
         tools = entry.setdefault("tools", {})
+        added = ["household_status", "ocado_basket", "ocado_next_order", "ocado_plan_order_changes"]
+        if enable_order_edits:
+            added.append("ocado_apply_order_changes")
+            entry["env"]["OCADO_ORDER_EDITING_ENABLED"] = "true"
         if "include" in tools:
-            tools["include"] = list(dict.fromkeys(tools["include"] + ["household_status", "ocado_basket", "ocado_next_order"]))
+            tools["include"] = list(dict.fromkeys(tools["include"] + added))
         elif not tools:
-            tools["include"] = ["household_status", "ocado_basket", "ocado_next_order"]
+            tools["include"] = added
         entry.setdefault("sampling", {"enabled": False})
         backup = path.with_name(f"config.before-ocado-{time.time_ns()}.yaml")
         backup.touch(mode=0o600, exist_ok=False)
         backup.write_text(original)
         yoto.write_private(path, config)
-        print("Ocado trolley and next-order tools enabled; existing Yoto, model and WhatsApp settings preserved.")
+        if enable_order_edits:
+            soul = yoto.home() / "SOUL.md"
+            previous = soul.read_text() if soul.exists() else ""
+            if "<!-- ocado-order-editing -->" not in previous:
+                if soul.exists():
+                    backup_soul = soul.with_name(f"SOUL.before-ocado-{time.time_ns()}.md")
+                    backup_soul.touch(mode=0o600, exist_ok=False)
+                    backup_soul.write_text(previous)
+                soul.touch(mode=0o600, exist_ok=True)
+                soul.write_text(previous + EDIT_GUIDANCE)
+        print("Ocado read and preview tools enabled; existing Yoto, model and WhatsApp settings preserved.")
+        if enable_order_edits:
+            print("Confirmed draft order edits enabled. Final review and saving/checking out remain on Ocado's website.")
     except (OSError, ValueError, TypeError):
         raise SystemExit("Ocado configuration failed. Check the copied session and config.yaml; no credentials were printed.") from None
+
+
+def enable_editing() -> None:
+    configure(enable_order_edits=True)
 
 
 def check() -> None:

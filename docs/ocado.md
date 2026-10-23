@@ -1,4 +1,4 @@
-# Read the current Ocado trolley
+# Ocado trolley and scheduled orders
 
 The read-only MCP tool `ocado_basket` returns the current
 trolley's live quantities and known line prices/subtotal, with names saved during a normal
@@ -96,8 +96,7 @@ The check command prints the delivery window, editability, guaranteed-editing ti
 and item-line count; it does not dump the order ID, address, payment details or item names.
 
 The reader uses the Orders page's normal request token, the website's fixed
-`GetUpcomingOrders` GraphQL query, and a GET of the selected order's detail. Only that
-fixed query is allowed; arbitrary GraphQL requests and mutations are rejected. The
+`GetUpcomingOrders` GraphQL query, and a GET of the selected order's detail. Only fixed read queries are allowed; arbitrary GraphQL requests and mutations are rejected. The
 nearest order is reported even if no longer editable, rather than silently selecting the
 following week's order. No matching order is reported explicitly without creating a trolley.
 
@@ -105,9 +104,47 @@ following week's order. No matching order is reported explicitly without creatin
 editing after that point or equate it to a later possible cut-off. If item details fail,
 the valid delivery summary remains available and items are marked unavailable.
 
-**Order editing is not implemented.** Selecting an order for editing, handling any existing
-trolley, applying changes, and saving/checkout require a separate implementation and live
-verification against the correct order identity.
+## Preview and stage changes to a Reserved order
+
+This first editing version changes quantities or removes items **already in the next
+Reserved order**. It does not add new products or submit checkout/payment. The writer is
+disabled by default. To enable it on the droplet after pulling and rebuilding:
+
+```sh
+make down
+make ocado-enable-editing
+make up
+```
+
+The enable command backs up your runtime config and SOUL.md, preserves their existing
+settings/instructions, and adds the editing tool and confirmation guidance. Then send
+`/reload-mcp` on WhatsApp.
+
+Ask, for example: **Show my next Reserved delivery and preview changing the milk to 1.**
+The agent should identify the product from the live order, use `ocado_plan_order_changes`,
+and show the delivery and exact before/after quantities. This preview does not change
+anything at Ocado. Explicitly confirm that preview to stage it. A preview expires after
+10 minutes; changed orders/trolleys require a fresh preview and confirmation.
+
+The apply tool opens that specific order for editing, verifies the active trolley belongs
+to it, sends quantity deltas once, and reads back the draft quantities. Quantity 0 removes
+an item. It refuses an existing editing session and does not request a merge or clear a
+standalone trolley. Avoid editing concurrently in the website/app while the bot runs:
+the local lock coordinates this shared bot, not separate Ocado clients.
+
+**After a successful draft edit, open Ocado, review the correct delivery, and save/check
+out the changes yourself before the deadline.** `staged_pending_checkout` does not mean
+the scheduled order has been saved. Finish or cancel that editing session on Ocado before
+requesting another bot edit.
+
+If opening or updating has an uncertain outcome, the plan is locked against replay. Check
+Ocado manually; the tool does not automatically retry or roll back. If Ocado returns a
+challenge such as HTTP 202, use the normal website and report the error. Never treat it
+as a successful edit.
+
+The write flow follows Ocado's public website code and passes mocked HTTP and container
+checks. No live order was changed during development; the first real draft edit still
+needs verification on the droplet.
 
 ## Limits and troubleshooting
 
@@ -139,3 +176,8 @@ Upcoming-order fields were also verified in Ocado's public application bundle
 `/static/index-CKdmGrK1.js` (`GetUpcomingOrders`) and its normal authenticated Orders view.
 The order-list and next Reserved order detail reads were verified on the Mac with the
 operator's session. Droplet access remains subject to Ocado's session and network controls.
+
+Editing contracts were inspected in that public bundle: the order-edit customer session,
+active-cart quantity deltas, and the fixed cart-order identity query. These are internal
+website routes, not a supported public customer API. No checkout, cancellation, payment,
+or trolley-merge route is exposed by this implementation.

@@ -25,13 +25,17 @@ ORDERS_PAGE = "/orders"
 # /static/index-CKdmGrK1.js and the account owner's normal Orders page.
 UPCOMING_QUERY = """query GetUpcomingOrders {
   ordersUpcoming {
-    orderId status isRecurring
+    orderId status isRecurring region { regionId }
     prices { total { amount currency } }
     editInfo { isEditable isUnderEdit edited guaranteedEditableBy restrictions { description } }
     slot { slotId type timeWindow { start end timeZone } }
   }
 }"""
 UPCOMING_REQUEST = {"operationName": "GetUpcomingOrders", "query": UPCOMING_QUERY, "variables": {}}
+CART_CONTEXT_QUERY = """query GetCartEditInfo {
+  shopper { cart { orderId isOrderUnderEdit order { editInfo { guaranteedEditableBy } } } }
+}"""
+CART_CONTEXT_REQUEST = {"operationName": "GetCartEditInfo", "query": CART_CONTEXT_QUERY, "variables": {}}
 READ_REQUESTS = {("GET", CART), ("GET", ORDERS_PAGE)}
 
 
@@ -138,7 +142,7 @@ def cookie_jar(session: dict) -> httpx.Cookies:
 def read_request(client: httpx.Client, method: str, path: str, **kwargs) -> httpx.Response:
     detail_read = method == "GET" and re.fullmatch(r"/api/order/v6/orders/[A-Za-z0-9_-]{1,200}", path)
     query_read = (method == "POST" and path == "/graphql" and
-                  kwargs.get("json") == UPCOMING_REQUEST and set(kwargs) <= {"json", "headers"})
+                  kwargs.get("json") in (UPCOMING_REQUEST, CART_CONTEXT_REQUEST) and set(kwargs) <= {"json", "headers"})
     if (method, path) not in READ_REQUESTS and not detail_read and not query_read:
         raise OcadoError("This integration permits only trolley and upcoming-order read operations.")
     try:
@@ -249,6 +253,7 @@ def order_summary(order: dict) -> dict:
         restrictions = edit.get("restrictions") or []
         return {
             "order_id": order_id, "status": order.get("status"),
+            "region_id": (order.get("region") or {}).get("regionId"),
             "is_reserved": order.get("isRecurring") is True,
             "delivery": {"start": start.isoformat(), "end": end.isoformat(),
                          "time_zone": window.get("timeZone"), "slot_id": slot.get("slotId")},

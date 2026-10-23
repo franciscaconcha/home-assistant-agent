@@ -1,4 +1,4 @@
-.PHONY: init build setup pair up down logs status doctor check yoto-login yoto-configure ocado-login ocado-configure ocado-check ocado-order-check
+.PHONY: init build setup pair up down logs status doctor check yoto-login yoto-configure ocado-login ocado-configure ocado-check ocado-order-check ocado-enable-editing
 
 init:
 	sh scripts/init.sh
@@ -52,3 +52,6 @@ ocado-check:
 
 ocado-order-check:
 	docker compose run --rm --no-deps hermes /opt/household-tools/.venv/bin/household-ocado-order-check
+
+ocado-enable-editing:
+	docker compose run --rm --no-deps hermes /opt/household-tools/.venv/bin/household-ocado-enable-editing

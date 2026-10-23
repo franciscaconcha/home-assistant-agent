@@ -3,8 +3,9 @@
 Personal Hermes Agent on a DigitalOcean droplet, reached through WhatsApp, with
 household tools maintained in this repository. The initial MCP server has a working
 status tool and Yoto player controls. Follow [Yoto setup](docs/yoto.md) to connect your
-account. [Ocado setup](docs/ocado.md) adds read-only access to your current trolley and
-next scheduled Reserved order. Order editing is not implemented yet.
+account. [Ocado setup](docs/ocado.md) adds reads of your current trolley and next scheduled
+Reserved order, plus optional confirmed draft quantity changes/removals. Final review
+and saving/checking out remain on Ocado's website.
 
 The deployment extends the official Hermes image with a separately locked Python MCP
 package. Docker Compose keeps the gateway running. `data/` contains configuration,
