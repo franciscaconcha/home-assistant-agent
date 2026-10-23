@@ -95,6 +95,12 @@ contains the five names in `config/config.yaml`, then recreate the gateway. Unkn
 use the alias returned by player discovery or run `make yoto-configure` while stopped.
 Expired/revoked login: stop the gateway and repeat the tunnel and login steps.
 
+If direct player discovery succeeds in the container but the MCP tool reports not
+authorised, update/rebuild and run `make yoto-configure` while the gateway is stopped.
+The household MCP entry must explicitly set `env.HERMES_HOME` to the active profile
+directory (`/opt/data` in this deployment). Hermes filters its MCP subprocess environment,
+so inheriting this variable implicitly does not work. Existing tokens need no new login.
+
 Sources:
 - <https://yoto.dev/authentication/headless-cli-auth/>
 - <https://yoto.dev/authentication/scopes/>

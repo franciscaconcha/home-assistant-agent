@@ -8,6 +8,9 @@ whatsapp:
 mcp_servers:
   household:
     command: /opt/household-tools/.venv/bin/household-tools
+    # Hermes filters subprocess environments; explicitly pass the profile's data path.
+    env:
+      HERMES_HOME: "${HERMES_HOME}"
     timeout: 90
     tools:
       include: [household_status, yoto_list_players, yoto_player_status, yoto_playback, yoto_set_volume]

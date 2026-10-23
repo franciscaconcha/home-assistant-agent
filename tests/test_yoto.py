@@ -149,7 +149,8 @@ class YotoTests(unittest.TestCase):
     def test_configuration_preserves_model_whatsapp_and_other_tools(self):
         path = yoto.home() / "config.yaml"
         original = {"model": {"provider": "anthropic"}, "whatsapp": {"group_policy": "pairing"},
-                    "mcp_servers": {"household": {"tools": {"include": ["existing_tool"]}},
+                    "mcp_servers": {"household": {"tools": {"include": ["existing_tool"]},
+                                                   "env": {"EXISTING_SETTING": "keep"}},
                                     "other": {"command": "other-command"}}}
         path.write_text(yaml.safe_dump(original))
         with patch.object(yoto, "list_players", return_value=[{"device_id": "player-one", "name": "Bedroom", "online": True}]), \
@@ -161,6 +162,9 @@ class YotoTests(unittest.TestCase):
         self.assertEqual(current["mcp_servers"]["other"], original["mcp_servers"]["other"])
         self.assertIn("existing_tool", current["mcp_servers"]["household"]["tools"]["include"])
         self.assertIn("yoto_playback", current["mcp_servers"]["household"]["tools"]["include"])
+        self.assertEqual(current["mcp_servers"]["household"]["env"], {
+            "EXISTING_SETTING": "keep", "HERMES_HOME": self.directory.name,
+        })
         self.assertEqual(json.loads((yoto.home() / "yoto-players.json").read_text())
                          ["players"]["bedroom"]["max_volume"], 25)
         self.assertEqual(len(list(yoto.home().glob("config.before-yoto-*.yaml"))), 1)

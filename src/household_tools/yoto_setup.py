@@ -117,6 +117,9 @@ def configure() -> None:
         config = yaml.safe_load(original) or {}
         server = config.setdefault("mcp_servers", {}).setdefault("household", {})
         server.setdefault("command", "/opt/household-tools/.venv/bin/household-tools")
+        # MCP strips HERMES_HOME unless explicitly configured. Login helpers inherit it,
+        # so both paths must be pinned to the same active profile directory.
+        server.setdefault("env", {})["HERMES_HOME"] = str(yoto.home())
         server["timeout"] = max(server.get("timeout", 30), 90)
         tools = server.setdefault("tools", {})
         if "include" in tools:
