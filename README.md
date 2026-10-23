@@ -2,7 +2,8 @@
 
 Personal Hermes Agent on a DigitalOcean droplet, reached through WhatsApp, with
 household tools maintained in this repository. The initial MCP server has a working
-status tool; Yoto and Ocado integrations are the next pieces to build.
+status tool and Yoto player controls. Follow [Yoto setup](docs/yoto.md) to connect your
+account. Ocado is not implemented yet.
 
 The deployment extends the official Hermes image with a separately locked Python MCP
 package. Docker Compose keeps the gateway running. `data/` contains configuration,
@@ -51,7 +52,8 @@ make logs
 ```
 
 Send the bot a message from the allowed phone: "Use household_status to check your
-tools." Expect server `ok`, with Yoto and Ocado reported as not implemented. Restart
+tools." Expect server `ok`, with Yoto reported as not authorised until connected and
+Ocado as not implemented. Restart
 the container and verify WhatsApp still works without re-pairing. Model usage is billed
 by your provider separately from the droplet.
 

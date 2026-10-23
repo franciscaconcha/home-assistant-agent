@@ -8,8 +8,8 @@ whatsapp:
 mcp_servers:
   household:
     command: /opt/household-tools/.venv/bin/household-tools
-    timeout: 30
+    timeout: 90
     tools:
-      include: [household_status]
+      include: [household_status, yoto_list_players, yoto_player_status, yoto_playback, yoto_set_volume]
     sampling:
       enabled: false

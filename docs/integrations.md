@@ -1,7 +1,8 @@
 # Adding household tools
 
-The first server exposes only `household_status`. Yoto and Ocado are not connected.
-No guessed APIs, real credentials, or fake shopping/player data are included.
+The server exposes `household_status` and Yoto player tools. Follow [Yoto setup](yoto.md)
+to authorise an account and select allowed players. Ocado is not implemented.
+No real credentials or fake shopping/player data are included.
 
 Add adapter modules under `src/household_tools/integrations/` when implementing each
 service, and register narrowly scoped functions in `server.py` with `@mcp.tool()`.
