@@ -27,6 +27,7 @@ async def check(directory: str) -> None:
                 "ocado_weekly_list", "ocado_set_weekly_list", "ocado_weekly_shop",
                 "household_list_recipes", "household_get_recipe", "household_save_recipe", "ocado_weekly_plan",
                 "ocado_plan_weekly_redo", "ocado_apply_weekly_redo",
+                "ocado_list_occasional_items", "ocado_get_occasional_item", "ocado_save_occasional_item",
             }
             result = await session.call_tool("household_status", {})
             assert not result.isError, result
@@ -52,6 +53,13 @@ async def check(directory: str) -> None:
             assert not draft.isError, draft
             value = draft.structuredContent or json.loads(next(block.text for block in draft.content if block.type == "text"))
             assert value["status"] == "needs_products", draft
+            extra = await session.call_tool("ocado_save_occasional_item", {
+                "item_id": "smoke-extra", "name": "Smoke extra",
+                "products": [{"product_id": None, "name": "Unmapped test product"}],
+            })
+            assert not extra.isError, extra
+            extra = await session.call_tool("ocado_get_occasional_item", {"name": "Smoke extra"})
+            assert not extra.isError, extra
     print("MCP stdio discovery and household_status passed.")
 
 

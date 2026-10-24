@@ -7,7 +7,8 @@ account. [Ocado setup](docs/ocado.md) adds reads of your current trolley and nex
 Reserved order, plus optional confirmed draft quantity changes/removals. Final review
 and saving/checking out remain on Ocado's website. The optional **weekly Ocado** workflow
 replaces the next booked order with private saved staples plus selected
-[recipes](docs/recipes.md), and sends a checkout link.
+[recipes](docs/recipes.md) and named [occasional items](docs/occasional.md), and sends a
+checkout link.
 
 The deployment extends the official Hermes image with a separately locked Python MCP
 package. Docker Compose keeps the gateway running. `data/` contains configuration,

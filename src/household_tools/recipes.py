@@ -151,26 +151,36 @@ def save_recipe(recipe_id: str, name: str, items: list[dict], servings: int | No
 def check_request_text(text: str, selected: list[dict]) -> None:
     # Account for the entire 'with ...' phrase, not only names supplied by the model.
     # Names/aliases can themselves contain 'and'; never split ingredient-like phrases.
-    remaining = key(text)
-    for position, recipe in enumerate(selected):
+    remaining, pending = key(text), list(selected)
+    position = 0
+    while pending:
         variants = [remaining]
         if position and remaining.startswith("and "):
             variants.append(remaining[4:])
-        matches = [(alias, variant) for variant in variants for alias in names(recipe)
+        matches = [(alias, variant, index) for index, entry in enumerate(pending)
+                   for variant in variants for alias in names(entry)
                    if variant == alias or variant.startswith(alias + " ")]
         if not matches:
-            raise ocado.OcadoError("The requested recipe phrase does not match the selected recipes in order. Resolve every named recipe; no order was changed.")
-        alias, variant = max(matches, key=lambda pair: len(pair[0]))
+            raise ocado.OcadoError("The request does not match all selected recipes/occasional items. Resolve every name; no order was changed.")
+        longest = max(len(row[0]) for row in matches)
+        matches = [row for row in matches if len(row[0]) == longest]
+        if len({row[2] for row in matches}) != 1:
+            raise ocado.OcadoError("A requested name matches more than one selected recipe/occasional item. Clarify it before shopping.")
+        alias, variant, index = matches[0]
+        pending.pop(index)
         remaining = variant[len(alias):].strip()
+        position += 1
     if remaining:
         raise ocado.OcadoError("Some requested recipe text was not resolved. Include every named recipe or clarify the request; no order was changed.")
 
 
-def shopping_plan(requested: list[str] | None = None, request_text: str | None = None) -> dict:
+def shopping_plan(requested: list[str] | None = None, request_text: str | None = None, *, extras: list[str] | None = None) -> dict:
+    from household_tools import occasional
     base = weekly.load_recipe()
     selected = resolve(requested if requested is not None else [])
+    extra_entries = occasional.resolve(extras if extras is not None else [])
     if request_text is not None:
-        check_request_text(request_text, selected)
+        check_request_text(request_text, [*selected, *extra_entries])
     combined, sources = {}, {}
 
     def add(item, source):
@@ -189,8 +199,12 @@ def shopping_plan(requested: list[str] | None = None, request_text: str | None =
             raise ocado.OcadoError(f"Recipe '{recipe['name']}' still needs exact Ocado products for: {', '.join(missing)}. Resolve them before shopping; no order was changed.")
         for item in recipe["items"]:
             add(item, recipe["name"])
+    chosen_extras = occasional.choose(extra_entries)
+    for entry in chosen_extras:
+        add(entry["product"], "Occasional: " + entry["requested_name"])
     items = weekly.validate_items(list(combined.values()))  # Bounds also apply to summed quantities.
     return {"mode": "ready_for_checkout", "items": items,
             "recipes": [{"id": recipe["id"], "name": recipe["name"], "servings": recipe["servings"]} for recipe in selected],
+            "extras": chosen_extras,
             "breakdown": [{**item, "sources": sources[item["product_id"]]} for item in items],
             "note": "Plan only; no Ocado order changed. Quantities add across staples and recipes, in packs. No automatic serving scaling, pantry deduction or merging of different product IDs."}

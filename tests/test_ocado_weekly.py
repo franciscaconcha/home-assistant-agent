@@ -162,6 +162,8 @@ class WeeklyTests(unittest.TestCase):
         self.assertEqual(soul.read_text().count("<!-- ocado-recipes-v1 -->"), 1)
         self.assertIn("household_save_recipe", entry["tools"]["include"])
         self.assertIn("ocado_weekly_plan", entry["tools"]["include"])
+        self.assertIn("ocado_save_occasional_item", entry["tools"]["include"])
+        self.assertEqual(soul.read_text().count("<!-- ocado-occasional-v1 -->"),1)
         self.assertTrue(soul.read_text().startswith("Keep my instructions."))
 
     def test_weekly_with_recipes_adds_merged_quantities_and_records_selected_recipes(self):

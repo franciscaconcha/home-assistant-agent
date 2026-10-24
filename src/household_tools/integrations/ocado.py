@@ -150,7 +150,10 @@ def read_request(client: httpx.Client, method: str, path: str, **kwargs) -> http
     detail_read = method == "GET" and re.fullmatch(r"/api/order/v6/orders/[A-Za-z0-9_-]{1,200}", path)
     query_read = (method == "POST" and path == "/graphql" and
                   kwargs.get("json") in (UPCOMING_REQUEST, CART_CONTEXT_REQUEST) and set(kwargs) <= {"json", "headers"})
-    if (method, path) not in READ_REQUESTS and not detail_read and not query_read:
+    products_read = (method == "PUT" and path == PRODUCTS and set(kwargs) <= {"json", "headers"}
+                     and isinstance(kwargs.get("json"), list) and 1 <= len(kwargs["json"]) <= 100
+                     and all(isinstance(pid, str) and PRODUCT_ID_PATTERN.fullmatch(pid) for pid in kwargs["json"]))
+    if (method, path) not in READ_REQUESTS and not detail_read and not query_read and not products_read:
         raise OcadoError("This integration permits only trolley and upcoming-order read operations.")
     try:
         response = client.request(method, ORIGIN + path, **kwargs)

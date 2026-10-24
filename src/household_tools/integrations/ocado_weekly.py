@@ -122,12 +122,12 @@ def validate_redo_order(order):
     edit.validate_editable_order({**order, "is_under_edit": False})
 
 
-def prepare_redo(recipes: list[str] | None = None) -> dict:
+def prepare_redo(recipes: list[str] | None = None, extras: list[str] | None = None) -> dict:
     if os.environ.get("OCADO_WEEKLY_ENABLED") != "true":
         raise ocado.OcadoError("Weekly Ocado is disabled. Run make ocado-enable-weekly first.")
     with edit.edit_lock():
         from household_tools.recipes import shopping_plan
-        target = shopping_plan(recipes)
+        target = shopping_plan(recipes, extras=extras)
         order = ocado.next_order(reserved_only=False)["order"]
         validate_redo_order(order)
         previous = read_run(run_path(order["order_id"]))
@@ -162,6 +162,7 @@ def prepare_redo(recipes: list[str] | None = None) -> dict:
         yoto.write_private(redo_path(plan_id), plan)
         return {"plan_id": plan_id, "delivery": order["delivery"], "changes": changes,
                 "items": target["items"], "recipes": target["recipes"], "expires_in_seconds": edit.PLAN_TTL,
+                "extras": target["extras"],
                 "note": "Preview only. Show the delivery, complete replacement list and before/after changes. Redo removes ALL current order trolley items, including later additions, then rebuilds from staples plus these recipes. Wait for explicit user confirmation before applying. Checkout remains manual."}
 
 
@@ -169,20 +170,21 @@ def apply_redo(plan_id: str, confirmed: bool = False) -> dict:
     if confirmed is not True:
         raise ocado.OcadoError("Show the redo preview and obtain explicit user confirmation before replacing this order again.")
     plan = load_redo(plan_id)
-    return run("weekly ocado", [recipe["id"] for recipe in plan["target"]["recipes"]], _redo_plan_id=plan_id)
+    return run("weekly ocado", [recipe["id"] for recipe in plan["target"]["recipes"]],
+               extras=[entry.get("requested_name", entry["id"]) for entry in plan["target"].get("extras", [])], _redo_plan_id=plan_id)
 
 
-def run(trigger: str, recipes: list[str] | None = None, *, _redo_plan_id: str | None = None) -> dict:
+def run(trigger: str, recipes: list[str] | None = None, *, extras: list[str] | None = None, _redo_plan_id: str | None = None) -> dict:
     if os.environ.get("OCADO_WEEKLY_ENABLED") != "true":
         raise ocado.OcadoError("Weekly Ocado is disabled. Run make ocado-enable-weekly on the droplet first.")
-    match = re.fullmatch(r"(?:(?:redo|rebuild) )?(?:make my )?weekly ocado(?: again)?(?:\s*,?\s+with\s+(.+))?", trigger.strip(), re.IGNORECASE) if isinstance(trigger, str) else None
+    match = re.fullmatch(r"(?:(?:redo|rebuild) )?(?:make my )?weekly ocado(?: again)?(?:(?:\s*,\s*(?:with\s+)?|\s+with\s+)(.+))?", trigger.strip(), re.IGNORECASE) if isinstance(trigger, str) else None
     if not match:
         raise ocado.OcadoError("Run this workflow only for the user's explicit 'weekly ocado' request.")
-    if match[1] and not recipes:
-        raise ocado.OcadoError("This request names recipes. Resolve every requested recipe and pass their names; do not run a staples-only shop.")
+    if match[1] and not recipes and not extras:
+        raise ocado.OcadoError("This request names recipes or occasional items. Resolve every requested name; do not run a staples-only shop.")
     with edit.edit_lock():
         from household_tools.recipes import shopping_plan
-        recipe = shopping_plan(recipes, match[1])
+        recipe = shopping_plan(recipes, match[1], extras=extras)
         # Include one-off bookings as well: choose the next delivery, never skip to a later editable one.
         order = ocado.next_order(reserved_only=False)["order"]
         if order is None:
@@ -289,6 +291,7 @@ def run(trigger: str, recipes: list[str] | None = None, *, _redo_plan_id: str | 
                     yoto.write_private(redo_path(_redo_plan_id), redo)
                 return {"status": "ready_for_checkout", "delivery": order["delivery"], "items": recipe["items"],
                         "recipes": recipe["recipes"], "breakdown": recipe["breakdown"],
+                        "extras": recipe["extras"],
                         "subtotal": summary["subtotal"], "currency": summary["currency"],
                         "checkout_url": ocado.ORIGIN + "/checkout/summary",
                         "note": "Notify the user: the booked order's edit trolley now contains exactly the weekly list. Open Ocado and review/save/check out before the deadline. Checkout was NOT submitted and the order is NOT confirmed as updated. Stock, minimum spend and checkout checks remain for Ocado."}

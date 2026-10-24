@@ -132,6 +132,28 @@ retry a tool error within the same request: report its failed phase/status and w
 a new user request. If fresh reads or identity checks fail, report that current error.
 Checkout remains manual.\n"""
 
+OCCASIONAL_GUIDANCE = """\n\n<!-- ocado-occasional-v1 -->
+Weekly Ocado can include named occasional extras: 'weekly ocado, detergent' or 'weekly
+ocado with greek chicken and detergent'. Use ocado_list_occasional_items/get_occasional_item
+to resolve names/aliases, and pass ALL such names in the extras argument of
+ocado_weekly_shop/ocado_weekly_plan. Pass recipes separately in recipes. Do not treat an
+extra as an unknown recipe, drop it, or carry it over to a later request that omits it.
+Every requested name must be resolved before changing the order. Unknown/ambiguous names
+need clarification. Quantities add by UUID across staples, recipes and extras.
+Save/update exact products and usual quantity through ocado_save_occasional_item;
+product_id=null creates a draft. Respect allowed brands/pack sizes. fixed selects one
+saved product; lowest_price means lowest bottle/pack price (not cost per wash); discount
+requires the saved minimum percentage off the displayed original price; named selects
+the flavour/variant explicitly requested via option aliases. Never rotate or price-shop
+a named variant. For a new flavour, preserve the saved brand/size preference and other
+variants, and obtain its actual UUID before saving. A bare group name such as jam needs
+a flavour choice. Only compare
+saved approved product options. Current price/offer checks run before order editing.
+If Ocado blocks price lookup or no option qualifies, report that and ask the user to
+choose a fixed product/current offer; never guess prices, omit the extra or claim cheapest.
+The file is ocado-occasional.json under HERMES_HOME and can be edited without redeploying.
+Saving it does not change staples, recipes or an order. Checkout stays manual.\n"""
+
 
 def configure(enable_order_edits: bool = False, enable_weekly: bool = False) -> None:
     try:
@@ -145,7 +167,8 @@ def configure(enable_order_edits: bool = False, enable_weekly: bool = False) -> 
         entry["timeout"] = max(entry.get("timeout", 90), 120)
         tools = entry.setdefault("tools", {})
         added = ["household_status", "ocado_basket", "ocado_next_order", "ocado_plan_order_changes",
-                 "household_list_recipes", "household_get_recipe", "household_save_recipe", "ocado_weekly_plan"]
+                 "household_list_recipes", "household_get_recipe", "household_save_recipe", "ocado_weekly_plan",
+                 "ocado_list_occasional_items", "ocado_get_occasional_item", "ocado_save_occasional_item"]
         if enable_order_edits:
             added.append("ocado_apply_order_changes")
             entry["env"]["OCADO_ORDER_EDITING_ENABLED"] = "true"
@@ -179,6 +202,8 @@ def configure(enable_order_edits: bool = False, enable_weekly: bool = False) -> 
                 guidance += REPEAT_GUIDANCE
             if enable_weekly and "<!-- ocado-weekly-recovery-v3 -->" not in previous:
                 guidance += RECOVERY_GUIDANCE
+            if enable_weekly and "<!-- ocado-occasional-v1 -->" not in previous:
+                guidance += OCCASIONAL_GUIDANCE
             if guidance:
                 if soul.exists():
                     backup_soul = soul.with_name(f"SOUL.before-ocado-{time.time_ns()}.md")

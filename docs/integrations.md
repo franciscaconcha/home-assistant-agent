@@ -7,6 +7,8 @@ optional confirmed draft quantity edits for the next Reserved order. The separat
 weekly workflow clears and refills the next booked order with a private fixed list; checkout
 remains manual. [Recipe shopping lists](recipes.md) can be added to that workflow.
 Recipe files and their product mappings remain private runtime data.
+[Occasional items](occasional.md) add named extras, approved variant choices and price/offer
+rules; conditional choices require verified current product data before order editing.
 No real credentials or fake shopping/player data are included.
 
 Add adapter modules under `src/household_tools/integrations/` when implementing each

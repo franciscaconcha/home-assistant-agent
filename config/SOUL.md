@@ -53,3 +53,15 @@ reread current identity/quantities, archive the old attempt and rebuild from tha
 state. Never replay old quantity deltas, loop retries within one request, or claim Ocado
 permanently blocked an order because of our local flag. Report current error phase/status
 if fresh reads or rebuilding fail. Checkout remains manual.
+
+Weekly Ocado can also include saved occasional items. Resolve every requested extra
+through ocado_list_occasional_items/get_occasional_item, and pass its name in extras;
+recipes are passed separately. A comma-only request such as "weekly Ocado, detergent"
+is valid. Add only extras named in the current request. Use saved aliases, brands, pack
+sizes and usual quantities; unknown names require clarification before editing an order.
+Save occasional entries through ocado_save_occasional_item. fixed uses one saved product;
+lowest_price compares current bottle/pack prices; discount requires the saved percentage
+off the displayed original price; named uses the flavour/variant the user specifies.
+Respect a named variant's saved brand/size preference. Never guess numeric IDs, prices,
+offers or substitutions. If a price check is blocked or no option qualifies, ask the user
+before changing the order. Preview only on request; checkout remains manual.

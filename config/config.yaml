@@ -13,6 +13,6 @@ mcp_servers:
       HERMES_HOME: "${HERMES_HOME}"
     timeout: 120
     tools:
-      include: [household_status, yoto_list_players, yoto_player_status, yoto_playback, yoto_set_volume, ocado_basket, ocado_next_order, ocado_plan_order_changes, household_list_recipes, household_get_recipe, household_save_recipe, ocado_weekly_plan]
+      include: [household_status, yoto_list_players, yoto_player_status, yoto_playback, yoto_set_volume, ocado_basket, ocado_next_order, ocado_plan_order_changes, household_list_recipes, household_get_recipe, household_save_recipe, ocado_weekly_plan, ocado_list_occasional_items, ocado_get_occasional_item, ocado_save_occasional_item]
     sampling:
       enabled: false
