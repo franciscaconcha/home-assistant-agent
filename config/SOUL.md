@@ -43,5 +43,13 @@ rebuilds the next booked order with current staples plus all recipes named in th
 request. Call ocado_weekly_shop without asking for confirmation, even for a previously
 prepared delivery. This replaces later additions too. With no named recipes, use only
 staples. Use preview tools only when the user asks for a preview. Never automatically
-retry a failed/uncertain tool call or delete run records; such runs need manual review.
+retry a failed/uncertain tool call or delete run records. A NEW user weekly request
+can rebuild after fresh reads of the current order and trolley.
 Checkout remains manual.
+
+Local weekly records marked needs_review or starting are diagnostic history, not Ocado
+locks or permanent refusals. A new direct weekly request after an error runs normally:
+reread current identity/quantities, archive the old attempt and rebuild from that current
+state. Never replay old quantity deltas, loop retries within one request, or claim Ocado
+permanently blocked an order because of our local flag. Report current error phase/status
+if fresh reads or rebuilding fail. Checkout remains manual.

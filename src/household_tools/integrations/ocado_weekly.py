@@ -9,6 +9,7 @@ import time
 from household_tools.integrations import ocado, ocado_edit as edit, yoto
 
 MAX_ITEMS = 100
+RUN_STATES = {"starting", "ready_for_checkout", "needs_review"}
 
 
 def recipe_path():
@@ -70,9 +71,12 @@ def read_run(path):
     if not path.exists():
         return None
     try:
-        return json.loads(path.read_text())
+        value = json.loads(path.read_text())
+        if not isinstance(value, dict) or value.get("state") not in RUN_STATES:
+            raise ValueError
+        return value
     except (OSError, ValueError):
-        raise ocado.OcadoError("A previous weekly run could not be read. Check the order manually; no repeat will be attempted.") from None
+        raise ocado.OcadoError("A previous weekly record is unreadable or has an unknown format. Repair the private record before rebuilding; no order was changed.") from None
 
 
 def assert_cart(client, token: str, order_id: str, expected: dict) -> dict:
@@ -124,8 +128,8 @@ def prepare_redo(recipes: list[str] | None = None) -> dict:
         order = ocado.next_order(reserved_only=False)["order"]
         validate_redo_order(order)
         previous = read_run(run_path(order["order_id"]))
-        if not previous or previous.get("state") != "ready_for_checkout":
-            raise ocado.OcadoError("A redo requires a previously successful weekly preparation. Interrupted/uncertain runs need manual review on Ocado.")
+        if not previous:
+            raise ocado.OcadoError("There is no previous weekly attempt to redo. Use a normal weekly request.")
         session = ocado.load_session()
         with edit.client_for(session) as client:
             token = edit.request_token(client)
@@ -185,15 +189,13 @@ def run(trigger: str, recipes: list[str] | None = None, *, _redo_plan_id: str | 
         redo = load_redo(_redo_plan_id) if _redo_plan_id is not None else None
         repeat = bool(previous) and redo is None
         if redo:
-            if not previous or previous.get("state") != "ready_for_checkout":
-                raise ocado.OcadoError("The previous weekly run now needs review. A redo is not permitted.")
+            if not previous:
+                raise ocado.OcadoError("The previous weekly record changed. Prepare a new preview.")
             validate_redo_order(order)
             if (redo["order_id"] != order["order_id"] or redo["order_fingerprint"] != edit.order_fingerprint(order)
                     or redo["previous_fingerprint"] != edit.fingerprint(previous) or redo["target"] != recipe):
                 raise ocado.OcadoError("The order, weekly list, recipes or prior run changed since the redo preview. Prepare a new preview and confirm it again.")
         elif previous:
-            if previous.get("state") != "ready_for_checkout":
-                raise ocado.OcadoError("A weekly run was already attempted for this order and needs manual review. It will not be repeated or cleared automatically.")
             validate_redo_order(order)
         if not redo and not repeat:
             edit.validate_editable_order(order)
@@ -238,6 +240,7 @@ def run(trigger: str, recipes: list[str] | None = None, *, _redo_plan_id: str | 
                     state["original_edit_trolley"] = current_cart if already_editing else None
                 if repeat:
                     state["repeated_by_user_request"] = True
+                    state["recovered_from_state"] = previous["state"]
                 yoto.write_private(path, state)  # Claim this order before the first remote write.
                 phase = "opening_order"
                 if not already_editing:
@@ -286,11 +289,14 @@ def run(trigger: str, recipes: list[str] | None = None, *, _redo_plan_id: str | 
                         "note": "Notify the user: the booked order's edit trolley now contains exactly the weekly list. Open Ocado and review/save/check out before the deadline. Checkout was NOT submitted and the order is NOT confirmed as updated. Stock, minimum spend and checkout checks remain for Ocado."}
             except (ocado.OcadoError, OSError) as error:
                 if phase != "preflight":
-                    state.update(state="needs_review", failed_phase=phase)
+                    state.update(state="needs_review", failed_phase=phase, failed_at=time.time())
+                    status = re.search(r"HTTP (\d{3})", str(error)) if isinstance(error, ocado.OcadoError) else None
+                    if status:
+                        state["failure_http_status"] = int(status[1])
                     try:
                         yoto.write_private(path, state)
                     except OSError:
                         pass  # Persisted starting state still blocks a duplicate attempt.
                     message = str(error) if isinstance(error, ocado.OcadoError) else "Private workflow state could not be saved."
-                    raise ocado.OcadoError(message + " Weekly preparation stopped; the order may be partially changed. Notify the user to review Ocado. Do not retry, substitute products or claim completion.") from None
+                    raise ocado.OcadoError(message + f" Weekly preparation stopped during {phase}; the order may be partially changed. Notify the user. Do not retry automatically or claim completion. A new explicit weekly request can rebuild from fresh order/trolley reads; this record is not a permanent lock.") from None
                 raise

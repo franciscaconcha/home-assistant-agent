@@ -79,8 +79,9 @@ Every new direct **weekly Ocado** request rebuilds the next booked order, includ
 already prepared delivery, without asking for confirmation. It replaces later additions
 and uses only the recipes named in the new request. A plain **weekly Ocado** uses only
 staples. **Redo weekly Ocado with recipe one and recipe two** works the same way. See
-[repeat requests](ocado.md#redo-an-already-prepared-weekly-order). Failed/uncertain runs
-still need manual review; the bot does not automatically retry a failed tool call.
+[repeat requests](ocado.md#redo-an-already-prepared-weekly-order). After a failed/uncertain attempt, a NEW explicit weekly request rereads the current
+order/trolley and rebuilds from fresh quantities. The bot never automatically retries
+a failed call within the same request or replays old deltas.
 
 ## Upgrade the droplet
 

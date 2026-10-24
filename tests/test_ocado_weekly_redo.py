@@ -78,7 +78,7 @@ class WeeklyRedoTests(unittest.TestCase):
             weekly.apply_redo(preview['plan_id'],True)
         self.assertEqual(len(self.posts),self.initial_writes)
 
-    def test_wrong_order_or_uncertain_previous_run_cannot_be_redone(self):
+    def test_wrong_order_is_refused_but_failed_attempt_can_have_fresh_preview(self):
         self.wrong_order=True
         with self.assertRaisesRegex(ocado.OcadoError,'Another order'):
             self.preview()
@@ -87,8 +87,8 @@ class WeeklyRedoTests(unittest.TestCase):
         previous=json.loads(path.read_text())
         previous['state']='needs_review'
         yoto.write_private(path,previous)
-        with self.assertRaisesRegex(ocado.OcadoError,'manual review'):
-            self.preview()
+        preview=self.preview()
+        self.assertIn('plan_id',preview)
         self.assertEqual(len(self.posts),self.initial_writes)
 
     def test_redo_can_open_a_fresh_edit_session_after_prior_order_was_saved(self):
@@ -109,7 +109,7 @@ class WeeklyRedoTests(unittest.TestCase):
         writes=len(self.posts)
         with self.assertRaises(ocado.OcadoError):
             weekly.apply_redo(preview['plan_id'],True)
-        with self.assertRaisesRegex(ocado.OcadoError,'manual review'):
-            self.preview()
+        fresh=self.preview()
+        self.assertNotEqual(fresh['plan_id'],preview['plan_id'])
         self.assertEqual(len(self.posts),writes)
         self.assertEqual(json.loads(weekly.run_path('order-next').read_text())['state'],'needs_review')

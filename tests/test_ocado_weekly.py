@@ -60,7 +60,7 @@ class WeeklyTests(unittest.TestCase):
         self.assertTrue(all('/apply-quantity' in route for route,_ in self.posts[writes:]))
         self.assertEqual(len(list((yoto.home()/'ocado-weekly-history').glob('*.json'))),1)
 
-    def test_removal_failure_stops_before_addition_and_cannot_replay(self):
+    def test_removal_failure_stops_then_new_user_request_rebuilds_from_reviewed_trolley(self):
         self.quantity_failure = "timeout"
         with self.assertRaisesRegex(ocado.OcadoError, "partially changed"):
             weekly.run("weekly ocado")
@@ -68,9 +68,13 @@ class WeeklyTests(unittest.TestCase):
         state = json.loads(weekly.run_path("order-next").read_text())
         self.assertEqual(state["state"], "needs_review")
         self.assertEqual(state["failed_phase"], "clearing_order")
-        with self.assertRaisesRegex(ocado.OcadoError, "will not be repeated"):
-            weekly.run("weekly ocado")
-        self.assertEqual(len(self.posts), 2)
+        self.quantity_failure=None
+        self.cart={'placeholder':1}
+        self.order['is_under_edit']=True
+        result=weekly.run("weekly ocado")
+        self.assertEqual(result['status'],'ready_for_checkout')
+        self.assertEqual(self.posts[2][1],[{'productId':'placeholder','quantity':-1}])
+        self.assertEqual({p:q for p,q in self.cart.items() if q},{'milk':4,'juice':1})
 
     def test_unavailable_product_is_failure_not_ready_or_silent_substitution(self):
         original = edit.post_edit
@@ -208,4 +212,5 @@ class WeeklyTests(unittest.TestCase):
         self.assertEqual(text.count('<!-- ocado-weekly-workflow -->'),1)
         self.assertEqual(text.count('<!-- ocado-recipes-v1 -->'),1)
         self.assertEqual(text.count('<!-- ocado-weekly-repeat-v2 -->'),1)
+        self.assertEqual(text.count('<!-- ocado-weekly-recovery-v3 -->'),1)
         self.assertTrue(text.startswith('Existing custom instructions.'))

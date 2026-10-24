@@ -273,10 +273,18 @@ order's open edit trolley can be reused. Another order's active edit session is 
 Existing standalone trolleys are not intentionally merged or cleared by this workflow.
 
 If a request times out, an item is unavailable, the order identity changes or any readback
-fails, the workflow stops and the same order is blocked from automatic replay. The edit
-trolley may be partly changed or empty. Review it on Ocado manually; do not delete the
-run record to force a retry without inspecting the actual order. No substitutions or
-checkout occur. The bot reports failure instead of claiming the weekly shop is ready.
+fails, that request stops. Its local `needs_review` record stores the failed phase/time
+and HTTP status when available. The edit trolley may be partly changed or empty. The bot
+reports that failure and does not automatically retry within the same request.
+
+A NEW explicit weekly request can recover: it rereads the current booked order/trolley,
+verifies identity and editable status, archives the previous failed attempt and rebuilds
+from the live quantities. It never replays old deltas or assumes the previous write failed
+to reach Ocado. Even an abandoned `starting` record can recover this way. A failed record
+is not an Ocado flag or a permanent lock. Do not delete it; the history is retained.
+If fresh reads or identity checks fail, nothing is written. If Ocado returns another 500,
+the new request stops with its current failed phase/status. No substitutions or checkout
+are submitted. This recovery does not itself fix the upstream cause of an HTTP 500.
 
 The workflow is tested with mocked HTTP, including multi-batch clearing, product additions,
 partial failure and duplicate requests. No live order replacement was performed during
@@ -307,9 +315,10 @@ without modifying Ocado. Optional preview plans expire after 10 minutes, require
 confirmation to apply, and cannot be replayed. Changes to the order, trolley or target
 invalidate a preview. These optional tools are not part of the normal weekly execution.
 
-A prior failed or uncertain attempt still needs manual review; neither automatic retries
-nor deleting run records are supported. This is separate from a new request following a
-successful preparation, which executes immediately.
+A NEW request after a failed or uncertain attempt also executes from fresh reads. It does
+not need a separate lock reset, manual-review confirmation or deletion of run records.
+The tool never automatically retries a failed call within the same request. Optional
+preview plans remain single-use; obtain a fresh preview instead of replaying one.
 
 To install this behavior, pull and build the latest code, then run `make down`,
 `make ocado-enable-weekly`, and `make up`. Send `/reload-mcp` on WhatsApp. Re-enabling
