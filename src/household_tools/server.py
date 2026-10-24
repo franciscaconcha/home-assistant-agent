@@ -77,7 +77,7 @@ def ocado_weekly_list() -> dict:
 
 @mcp.tool()
 def ocado_set_weekly_list(items: list[dict], confirmed: bool = False) -> dict:
-    """Save the weekly list ONLY after the user confirms exact products/pack sizes/quantities. Each item has product_id, name, quantity. Obtain real IDs from Ocado reads or browser data; never invent them. Only saves the private list, never changes an order."""
+    """Save the weekly list ONLY after the user confirms exact products/pack sizes/quantities. Each item has product_id (internal UUID), name, quantity. Obtain UUIDs from Ocado reads or browser capture; numeric URL codes are invalid. Never invent IDs. Only saves the private list, never changes an order."""
     return ocado_weekly.save_recipe(items, confirmed)
 
 
@@ -114,7 +114,7 @@ def household_get_recipe(name: str) -> dict:
 @mcp.tool()
 def household_save_recipe(recipe_id: str, name: str, items: list[dict], servings: int | None = None,
                           aliases: list[str] | None = None, notes: str = "", confirmed: bool = False) -> dict:
-    """Create/update a private recipe shopping list. Each item has product_id, name and quantity IN PACKS for one preparation. Use product_id=null for a draft ingredient whose exact product is unresolved; never invent IDs. Set confirmed=true only when user confirmed exact products/pack sizes/quantities. Servings are descriptive and do not scale quantities. Use aliases for agreed alternate recipe names/spellings. Only saves local recipe data, never changes Ocado."""
+    """Create/update a private recipe shopping list. Each item has product_id (internal UUID, never a numeric URL code), name and quantity IN PACKS for one preparation. Use product_id=null for a draft ingredient whose exact product is unresolved; never invent IDs. Set confirmed=true only when user confirmed exact products/pack sizes/quantities. Servings are descriptive and do not scale quantities. Use aliases for agreed alternate recipe names/spellings. Only saves local recipe data, never changes Ocado."""
     return recipe_store.save_recipe(recipe_id, name, items, servings, aliases, notes, confirmed)
 
 

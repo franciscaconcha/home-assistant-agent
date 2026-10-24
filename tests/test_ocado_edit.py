@@ -1,3 +1,4 @@
+from ocado_test_ids import product_id as test_product_id
 import copy
 import json
 import os
@@ -17,8 +18,8 @@ from test_ocado import session
 def order():
     return {"order_id": "order-next", "region_id": "region-one", "delivery": {"start": "2099-04-10T10:00:00Z"},
             "is_editable": True, "is_under_edit": False, "guaranteed_editable_by": "2099-04-09T22:00:00Z",
-            "total": "10.00", "items": [{"product_id": "milk", "name": "Milk", "quantity": 2},
-                                         {"product_id": "bread", "name": "Bread", "quantity": 1}]}
+            "total": "10.00", "items": [{"product_id": test_product_id("milk"), "name": "Milk", "quantity": 2},
+                                         {"product_id": test_product_id("bread"), "name": "Bread", "quantity": 1}]}
 
 
 class EditTests(unittest.TestCase):
@@ -28,7 +29,7 @@ class EditTests(unittest.TestCase):
         env = patch.dict(os.environ, {"HERMES_HOME": directory.name, "OCADO_ORDER_EDITING_ENABLED": "true"})
         env.start()
         self.addCleanup(env.stop)
-        yoto.write_private(ocado.session_path(), {**session(), "product_names": {"milk": "Milk"}})
+        yoto.write_private(ocado.session_path(), {**session(), "product_names": {test_product_id("milk"): "Milk"}})
         self.order = order()
         mock_order = patch.object(ocado, "next_order", side_effect=lambda: {"order": copy.deepcopy(self.order)})
         mock_order.start()
@@ -39,7 +40,7 @@ class EditTests(unittest.TestCase):
         self.quantity_failure = None
         self.ignore_quantity_write = False
         self.posts = []
-        self.cart = {"milk": 2, "bread": 1}
+        self.cart = {test_product_id("milk"): 2, test_product_id("bread"): 1}
         original = httpx.Client
         factory = patch.object(edit, "client_for", side_effect=lambda saved:
             original(transport=httpx.MockTransport(self.handler), cookies=ocado.cookie_jar(saved), follow_redirects=False))
@@ -56,7 +57,7 @@ class EditTests(unittest.TestCase):
                 "isOrderUnderEdit": self.editing, "orderId": "wrong" if self.wrong_order else "order-next"}}}})
         if request.method == "GET":
             self.assertEqual(request.url.path, "/api/cart/v1/carts/active")
-            items = self.cart if self.editing else ({"unrelated": 1} if self.cart_changed else {})
+            items = self.cart if self.editing else ({test_product_id("unrelated"): 1} if self.cart_changed else {})
             return httpx.Response(200, json={"items": [{"productId": p, "quantity": q} for p, q in items.items() if q]})
         payload = json.loads(request.content)
         self.posts.append((request.url.path, payload))
@@ -74,7 +75,7 @@ class EditTests(unittest.TestCase):
         return httpx.Response(200)
 
     def preview(self):
-        return edit.prepare([{"product_id": "milk", "quantity": 4}, {"product_id": "bread", "quantity": 0}])
+        return edit.prepare([{"product_id": test_product_id("milk"), "quantity": 4}, {"product_id": test_product_id("bread"), "quantity": 0}])
 
     def test_preview_is_read_only_and_apply_uses_deltas_not_desired_quantities(self):
         preview = self.preview()
@@ -83,9 +84,9 @@ class EditTests(unittest.TestCase):
         result = edit.apply(preview["plan_id"], confirmed=True)
         self.assertEqual(result["status"], "staged_pending_checkout")
         self.assertEqual(self.posts, [(edit.START_EDIT, {"orderId": "order-next", "regionId": "region-one"}),
-            (edit.APPLY_QUANTITY.split("?")[0], [{"productId": "milk", "quantity": 2}, {"productId": "bread", "quantity": -1}])])
+            (edit.APPLY_QUANTITY.split("?")[0], [{"productId": test_product_id("milk"), "quantity": 2}, {"productId": test_product_id("bread"), "quantity": -1}])])
         saved = ocado.load_session()
-        self.assertEqual(saved["product_names"], {"milk": "Milk"})
+        self.assertEqual(saved["product_names"], {test_product_id("milk"): "Milk"})
         self.assertTrue(any(c["name"] == "edit-session" for c in saved["cookies"]))
         self.assertNotIn("TEST_EDIT_COOKIE", repr(result))
         with self.assertRaisesRegex(ocado.OcadoError, "already been attempted"):
@@ -134,19 +135,19 @@ class EditTests(unittest.TestCase):
 
     def test_changed_edit_cart_baseline_blocks_quantity_write(self):
         preview = self.preview()
-        self.cart["milk"] = 3
+        self.cart[test_product_id("milk")] = 3
         with self.assertRaisesRegex(ocado.OcadoError, "quantities differ"):
             edit.apply(preview["plan_id"], True)
         self.assertEqual(len(self.posts), 1)
 
     def test_unexpected_extra_products_block_writes_and_200_is_not_proof_of_success(self):
         preview = self.preview()
-        self.cart["unexpected"] = 1
+        self.cart[test_product_id("unexpected")] = 1
         with self.assertRaisesRegex(ocado.OcadoError, "quantities differ"):
             edit.apply(preview["plan_id"], True)
         self.assertEqual(len(self.posts), 1)
         self.editing = False
-        del self.cart["unexpected"]
+        del self.cart[test_product_id("unexpected")]
         self.posts = []
         preview = self.preview()
         self.ignore_quantity_write = True
@@ -171,9 +172,9 @@ class EditTests(unittest.TestCase):
                 self.assertEqual(len(self.posts), 2)
 
     def test_input_constraints_and_noneditable_orders(self):
-        for changes in [[], [{"product_id": "milk", "quantity": True}], [{"product_id": "milk", "quantity": 51}],
-                        [{"product_id": "milk", "quantity": -1}], [{"product_id": "milk", "quantity": 1}] * 2,
-                        [{"product_id": "new", "quantity": 1}], [{"product_id": "milk", "quantity": 2}]]:
+        for changes in [[], [{"product_id": test_product_id("milk"), "quantity": True}], [{"product_id": test_product_id("milk"), "quantity": 51}],
+                        [{"product_id": test_product_id("milk"), "quantity": -1}], [{"product_id": test_product_id("milk"), "quantity": 1}] * 2,
+                        [{"product_id": test_product_id("new"), "quantity": 1}], [{"product_id": test_product_id("milk"), "quantity": 2}]]:
             with self.assertRaises(ocado.OcadoError):
                 edit.prepare(changes)
         for key, value in [("is_editable", False), ("is_under_edit", True), ("region_id", None),
@@ -188,7 +189,7 @@ class EditTests(unittest.TestCase):
             self.preview()
         with httpx.Client(transport=httpx.MockTransport(lambda req: self.fail("Unexpected write"))) as client:
             for route, body in [("/checkout", {}), (edit.START_EDIT, {"orderId": "../bad", "regionId": "x"}),
-                                (edit.APPLY_QUANTITY, [{"productId": "milk", "quantity": 0}])]:
+                                (edit.APPLY_QUANTITY, [{"productId": test_product_id("milk"), "quantity": 0}])]:
                 with self.assertRaises(ocado.OcadoError):
                     edit.post_edit(client, "test", route, body)
 

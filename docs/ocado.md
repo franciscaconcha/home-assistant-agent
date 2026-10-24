@@ -227,7 +227,8 @@ nano ~/hermes-home/data/ocado-weekly.json
 No restart is required: the list is read for every new run. Quantities are pack counts,
 not litres or individual units within a multipack. Use the actual Ocado product ID when
 changing products; names are labels, not search terms. The list must be nonempty, with
-unique IDs and integer quantities from 1 to 50. Invalid JSON or invalid entries stop the
+unique internal UUID product IDs and integer quantities from 1 to 50. Numeric codes from
+product-page URLs are rejected. Invalid JSON or invalid entries stop the
 workflow before it opens an order. Keep `mode` as `ready_for_checkout`.
 
 Alternatively, tell the bot to change the weekly list. It should read real IDs from
@@ -325,3 +326,14 @@ To install this behavior, pull and build the latest code, then run `make down`,
 weekly appends the updated preference while preserving existing settings and instructions.
 No live repeat was performed during development; mocked HTTP covers active-session reuse,
 new recipe selections, immediate repeats, wrong-order refusal and partial failure.
+
+### Invalid product IDs and HTTP 500 while adding
+
+Ocado product-page URLs can contain a numeric catalogue code. The cart API uses a different
+internal UUID. Pasting a numeric page code into `product_id` is invalid and can cause a
+batch add to fail. Copy the UUID from the normal browser capture or live order data.
+
+Weekly staples and recipe items are validated before the booked order is read/opened or
+cleared. An invalid entry reports its product name and the need for an internal UUID.
+Fix that saved entry while preserving all other items; the provided write adapter also
+rejects non-UUID product IDs. No automatic conversion of URL codes or guessed IDs occurs.

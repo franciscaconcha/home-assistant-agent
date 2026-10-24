@@ -1,3 +1,4 @@
+from ocado_test_ids import product_id as test_product_id
 import json
 import time
 import unittest
@@ -16,20 +17,20 @@ class WeeklyRedoTests(unittest.TestCase):
         weekly.run('weekly ocado')
         self.initial_writes=len(self.posts)
         recipes.save_recipe('meal-one','Meal one',[
-            {'product_id':'extra','name':'Recipe product','quantity':2}],confirmed=True)
+            {'product_id':test_product_id('extra'),'name':'Recipe product','quantity':2}],confirmed=True)
 
     def preview(self):
         return weekly.prepare_redo(['Meal one'])
 
     def test_preview_then_confirmed_redo_reuses_correct_edit_trolley_and_archives_run(self):
-        self.cart['later-addition']=1
+        self.cart[test_product_id('later-addition')]=1
         preview=self.preview()
         self.assertEqual(len(self.posts),self.initial_writes)
-        removed=next(c for c in preview['changes'] if c['product_id']=='later-addition')
+        removed=next(c for c in preview['changes'] if c['product_id']==test_product_id('later-addition'))
         self.assertEqual((removed['before'],removed['after']),(1,0))
         result=weekly.apply_redo(preview['plan_id'],True)
         self.assertEqual(result['status'],'ready_for_checkout')
-        self.assertEqual({p:q for p,q in self.cart.items() if q},{'milk':4,'juice':1,'extra':2})
+        self.assertEqual({p:q for p,q in self.cart.items() if q},{test_product_id('milk'):4,test_product_id('juice'):1,test_product_id('extra'):2})
         # Only quantity writes were needed; the existing edit session was not reopened.
         self.assertTrue(all('/apply-quantity' in route for route,_ in self.posts[self.initial_writes:]))
         archive=list((yoto.home()/'ocado-weekly-history').glob('*.json'))
@@ -42,13 +43,13 @@ class WeeklyRedoTests(unittest.TestCase):
         self.assertEqual(len(self.posts),writes)
         self.assertEqual(weekly.run('weekly ocado')['status'],'ready_for_checkout')
         self.assertGreater(len(self.posts),writes)
-        self.assertEqual({p:q for p,q in self.cart.items() if q},{'milk':4,'juice':1})
+        self.assertEqual({p:q for p,q in self.cart.items() if q},{test_product_id('milk'):4,test_product_id('juice'):1})
 
     def test_unconfirmed_expired_and_stale_cart_preview_do_not_write(self):
         preview=self.preview()
         with self.assertRaisesRegex(ocado.OcadoError,'explicit user confirmation'):
             weekly.apply_redo(preview['plan_id'])
-        self.cart['milk']=5
+        self.cart[test_product_id('milk')]=5
         with self.assertRaisesRegex(ocado.OcadoError,'trolley or editing session changed'):
             weekly.apply_redo(preview['plan_id'],True)
         path=weekly.redo_path(preview['plan_id'])
@@ -62,7 +63,7 @@ class WeeklyRedoTests(unittest.TestCase):
     def test_changed_recipes_order_and_previous_run_require_fresh_confirmation(self):
         preview=self.preview()
         recipes.save_recipe('meal-one','Meal one',[
-            {'product_id':'extra','name':'Recipe product','quantity':3}],confirmed=True)
+            {'product_id':test_product_id('extra'),'name':'Recipe product','quantity':3}],confirmed=True)
         with self.assertRaisesRegex(ocado.OcadoError,'changed since the redo preview'):
             weekly.apply_redo(preview['plan_id'],True)
         preview=self.preview()
@@ -94,12 +95,12 @@ class WeeklyRedoTests(unittest.TestCase):
     def test_redo_can_open_a_fresh_edit_session_after_prior_order_was_saved(self):
         self.editing=False
         # Saved order details and next editing trolley now reflect the successful preparation.
-        self.order['items']=[{'product_id':'milk','name':'Milk','quantity':4},
-                             {'product_id':'juice','name':'Juice','quantity':1}]
+        self.order['items']=[{'product_id':test_product_id('milk'),'name':'Milk','quantity':4},
+                             {'product_id':test_product_id('juice'),'name':'Juice','quantity':1}]
         preview=self.preview()
         weekly.apply_redo(preview['plan_id'],True)
         self.assertEqual(self.posts[self.initial_writes][0],weekly.edit.START_EDIT)
-        self.assertEqual(self.cart['extra'],2)
+        self.assertEqual(self.cart[test_product_id('extra')],2)
 
     def test_uncertain_redo_stops_and_locks_plan_and_run_against_replay(self):
         preview=self.preview()

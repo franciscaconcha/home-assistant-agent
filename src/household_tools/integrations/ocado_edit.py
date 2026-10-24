@@ -118,11 +118,13 @@ def prepare(changes: list[dict]) -> dict:
         if not isinstance(change, dict) or set(change) != {"product_id", "quantity"}:
             raise ocado.OcadoError("Each change must contain only product_id and the desired quantity.")
         product_id, quantity = change["product_id"], change["quantity"]
-        if not isinstance(product_id, str) or not re.fullmatch(r"[A-Za-z0-9_-]{1,200}", product_id) or product_id in seen:
-            raise ocado.OcadoError("Product IDs must be distinct strings.")
+        product_id = ocado.require_product_id(product_id)
+        if product_id in seen:
+            raise ocado.OcadoError("Product IDs must be distinct.")
         if type(quantity) is not int or not 0 <= quantity <= MAX_QUANTITY:
             raise ocado.OcadoError(f"Each desired quantity must be an integer from 0 to {MAX_QUANTITY}; 0 removes an item.")
         seen.add(product_id)
+    changes = [{**change, "product_id": ocado.require_product_id(change["product_id"])} for change in changes]
     with edit_lock():
         order = editable_order()
         items = {item["product_id"]: item for item in order["items"]}
@@ -173,7 +175,7 @@ def post_edit(client, token: str, path: str, body) -> None:
     elif path == APPLY_QUANTITY:
         valid = isinstance(body, list) and 1 <= len(body) <= MAX_CHANGES and all(
             isinstance(item, dict) and set(item) == {"productId", "quantity"}
-            and isinstance(item["productId"], str) and re.fullmatch(r"[A-Za-z0-9_-]{1,200}", item["productId"])
+            and isinstance(item["productId"], str) and ocado.PRODUCT_ID_PATTERN.fullmatch(item["productId"])
             and type(item["quantity"]) is int and item["quantity"] != 0 for item in body)
     else:
         valid = False

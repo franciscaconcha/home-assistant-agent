@@ -25,10 +25,11 @@ def validate_items(items) -> list[dict]:
         if not isinstance(item, dict) or set(item) != {"product_id", "name", "quantity"}:
             raise ocado.OcadoError("Each weekly item needs product_id, name and quantity.")
         pid, name, quantity = item["product_id"], item["name"], item["quantity"]
-        if not isinstance(pid, str) or not re.fullmatch(r"[A-Za-z0-9_-]{1,200}", pid) or pid in seen:
-            raise ocado.OcadoError("Weekly product IDs must be valid and distinct.")
         if not isinstance(name, str) or not name.strip() or len(name) > 500:
             raise ocado.OcadoError("Each weekly product needs its exact confirmed name.")
+        pid = ocado.require_product_id(pid, name)
+        if pid in seen:
+            raise ocado.OcadoError("Weekly product IDs must be distinct.")
         if type(quantity) is not int or not 1 <= quantity <= edit.MAX_QUANTITY:
             raise ocado.OcadoError(f"Weekly quantities must be integers from 1 to {edit.MAX_QUANTITY}.")
         seen.add(pid)
@@ -42,7 +43,9 @@ def load_recipe() -> dict:
         if value.get("mode") != "ready_for_checkout":
             raise ValueError
         return {"mode": "ready_for_checkout", "items": validate_items(value["items"])}
-    except (OSError, ValueError, KeyError, TypeError, AttributeError):
+    except (OSError, ValueError, KeyError, TypeError, AttributeError) as error:
+        if isinstance(error, ocado.OcadoError):
+            raise
         raise ocado.OcadoError("The weekly list is missing or invalid. Confirm exact products and quantities, then save it with ocado_set_weekly_list. No order was changed.") from None
 
 
@@ -232,6 +235,8 @@ def run(trigger: str, recipes: list[str] | None = None, *, _redo_plan_id: str | 
                     yoto.write_private(archive, previous)
                 elif context["isOrderUnderEdit"]:
                     raise ocado.OcadoError("An order is already being edited. Finish or cancel it on Ocado before running weekly Ocado.")
+                for product_id in baseline:
+                    ocado.require_product_id(product_id, "existing order item")
                 # Keep the standalone trolley snapshot private for diagnosing an interrupted run.
                 state["original_standalone_trolley"] = current_cart if not already_editing else None
                 if redo:

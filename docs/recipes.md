@@ -47,8 +47,9 @@ The filename must match its `id`, using lowercase words separated by hyphens. St
 
 `product_id: null` marks an unresolved draft ingredient. A recipe with any such entry is
 listed as **needs_products** and cannot be used to modify an order. Replace null with the
-actual internal Ocado product ID once the exact product and pack size are confirmed.
-Never invent an ID or assume a legacy numeric product-page URL is its internal cart ID.
+actual internal Ocado product UUID once the exact product and pack size are confirmed.
+Never invent an ID or use a numeric product-page code as its internal cart ID. Invalid
+IDs stop the shop before it opens or clears an order, and identify the affected product.
 
 Recipe items are **packs to buy for one preparation**, not cooking weights or quantities
 per person. Store cooking details in `notes`. `servings` is optional descriptive metadata;

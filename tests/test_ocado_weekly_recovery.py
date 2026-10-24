@@ -1,3 +1,4 @@
+from ocado_test_ids import product_id as test_product_id
 import json
 import unittest
 from unittest.mock import patch
@@ -32,12 +33,12 @@ class WeeklyRecoveryTests(unittest.TestCase):
         self.assertEqual(failed['failure_http_status'],500)
         self.assertEqual(failed['failed_phase'],'adding_weekly_items')
         recipes.save_recipe('meal-one','Meal one',[
-            {'product_id':'milk','name':'Whole milk 1L','quantity':1},
-            {'product_id':'extra','name':'Recipe product','quantity':2}],confirmed=True)
+            {'product_id':test_product_id('milk'),'name':'Whole milk 1L','quantity':1},
+            {'product_id':test_product_id('extra'),'name':'Recipe product','quantity':2}],confirmed=True)
         result=weekly.run('weekly ocado with Meal one',['Meal one'])
         self.assertEqual(result['status'],'ready_for_checkout')
-        self.assertEqual(self.posts[writes][1],[{'productId':'milk','quantity':-4},{'productId':'juice','quantity':-1}])
-        self.assertEqual({p:q for p,q in self.cart.items() if q},{'milk':5,'juice':1,'extra':2})
+        self.assertEqual(self.posts[writes][1],[{'productId':test_product_id('milk'),'quantity':-4},{'productId':test_product_id('juice'),'quantity':-1}])
+        self.assertEqual({p:q for p,q in self.cart.items() if q},{test_product_id('milk'):5,test_product_id('juice'):1,test_product_id('extra'):2})
         archive=list((yoto.home()/'ocado-weekly-history').glob('*.json'))
         self.assertEqual(json.loads(archive[0].read_text())['failure_http_status'],500)
         current=json.loads(weekly.run_path('order-next').read_text())
@@ -53,13 +54,13 @@ class WeeklyRecoveryTests(unittest.TestCase):
 
     def test_abandoned_starting_record_recovers_from_current_placeholder(self):
         yoto.write_private(weekly.run_path('order-next'),{
-            'state':'starting','order_id':'order-next','old_baseline':{'obsolete':99}})
+            'state':'starting','order_id':'order-next','old_baseline':{test_product_id('obsolete'):99}})
         self.editing=True
         self.order['is_under_edit']=True
-        self.cart={'placeholder':1}
+        self.cart={test_product_id('placeholder'):1}
         result=weekly.run('weekly ocado')
         self.assertEqual(result['status'],'ready_for_checkout')
-        self.assertEqual(self.posts[0][1],[{'productId':'placeholder','quantity':-1}])
+        self.assertEqual(self.posts[0][1],[{'productId':test_product_id('placeholder'),'quantity':-1}])
         current=json.loads(weekly.run_path('order-next').read_text())
         self.assertEqual(current['recovered_from_state'],'starting')
 

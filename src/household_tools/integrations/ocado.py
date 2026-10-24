@@ -37,10 +37,17 @@ CART_CONTEXT_QUERY = """query GetCartEditInfo {
 }"""
 CART_CONTEXT_REQUEST = {"operationName": "GetCartEditInfo", "query": CART_CONTEXT_QUERY, "variables": {}}
 READ_REQUESTS = {("GET", CART), ("GET", ORDERS_PAGE)}
+PRODUCT_ID_PATTERN = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", re.IGNORECASE)
 
 
 class OcadoError(ValueError):
     """Safe to return to a user; never include cookies or raw response bodies."""
+
+
+def require_product_id(value, name: str = "product") -> str:
+    if not isinstance(value, str) or not PRODUCT_ID_PATTERN.fullmatch(value):
+        raise OcadoError(f"Invalid Ocado product_id for {name!r}: use the internal UUID from browser capture or live order data, not the numeric code/URL from a product page. No edit request was sent.")
+    return value.lower()
 
 
 def session_path():

@@ -50,8 +50,9 @@ def validate(value, expected_id: str | None = None) -> dict:
         if not isinstance(item, dict) or set(item) != {"product_id", "name", "quantity"}:
             raise ocado.OcadoError("Each recipe item needs product_id (or null for a draft), name and quantity in packs.")
         pid = item["product_id"]
-        checked = weekly.validate_items([{**item, "product_id": "unmapped" if pid is None else pid}])[0]
+        checked = weekly.validate_items([{**item, "product_id": "00000000-0000-0000-0000-000000000000" if pid is None else pid}])[0]
         if pid is not None:
+            pid = checked["product_id"]
             if pid in seen:
                 raise ocado.OcadoError("Combine repeated products within a recipe into one quantity.")
             seen.add(pid)

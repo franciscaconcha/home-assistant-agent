@@ -1,3 +1,4 @@
+from ocado_test_ids import product_id as test_product_id
 import copy
 import json
 import os
@@ -15,8 +16,8 @@ order = edit_tests.order
 
 
 def recipe():
-    return [{"product_id": "milk", "name": "Whole milk 1L", "quantity": 4},
-            {"product_id": "juice", "name": "Orange juice", "quantity": 1}]
+    return [{"product_id": test_product_id("milk"), "name": "Whole milk 1L", "quantity": 4},
+            {"product_id": test_product_id("juice"), "name": "Orange juice", "quantity": 1}]
 
 
 class WeeklyTests(unittest.TestCase):
@@ -36,9 +37,9 @@ class WeeklyTests(unittest.TestCase):
         result = weekly.run("make my weekly ocado")
         self.reader.assert_called_once_with(reserved_only=False)
         self.assertEqual(result["status"], "ready_for_checkout")
-        self.assertEqual(self.posts[1][1], [{"productId": "milk", "quantity": -2}, {"productId": "bread", "quantity": -1}])
-        self.assertEqual(self.posts[2][1], [{"productId": "milk", "quantity": 4}, {"productId": "juice", "quantity": 1}])
-        self.assertEqual({p: q for p, q in self.cart.items() if q}, {"milk": 4, "juice": 1})
+        self.assertEqual(self.posts[1][1], [{"productId": test_product_id("milk"), "quantity": -2}, {"productId": test_product_id("bread"), "quantity": -1}])
+        self.assertEqual(self.posts[2][1], [{"productId": test_product_id("milk"), "quantity": 4}, {"productId": test_product_id("juice"), "quantity": 1}])
+        self.assertEqual({p: q for p, q in self.cart.items() if q}, {test_product_id("milk"): 4, test_product_id("juice"): 1})
         self.assertEqual(result["items"], recipe())
         self.assertIn("NOT submitted", result["note"])
         path = weekly.run_path("order-next")
@@ -50,13 +51,13 @@ class WeeklyTests(unittest.TestCase):
     def test_repeated_user_request_rebuilds_current_list_and_removes_later_additions(self):
         weekly.run("weekly ocado")
         writes = len(self.posts)
-        self.cart["extra-afterwards"] = 1
+        self.cart[test_product_id("extra-afterwards")] = 1
         self.order["is_under_edit"] = True
         weekly.save_recipe([{**recipe()[0], "quantity": 5}], True)
         result = weekly.run("weekly ocado again")
         self.assertEqual(result["status"], "ready_for_checkout")
         self.assertGreater(len(self.posts), writes)
-        self.assertEqual({p:q for p,q in self.cart.items() if q},{"milk":5})
+        self.assertEqual({p:q for p,q in self.cart.items() if q},{test_product_id("milk"):5})
         self.assertTrue(all('/apply-quantity' in route for route,_ in self.posts[writes:]))
         self.assertEqual(len(list((yoto.home()/'ocado-weekly-history').glob('*.json'))),1)
 
@@ -69,12 +70,12 @@ class WeeklyTests(unittest.TestCase):
         self.assertEqual(state["state"], "needs_review")
         self.assertEqual(state["failed_phase"], "clearing_order")
         self.quantity_failure=None
-        self.cart={'placeholder':1}
+        self.cart={test_product_id('placeholder'):1}
         self.order['is_under_edit']=True
         result=weekly.run("weekly ocado")
         self.assertEqual(result['status'],'ready_for_checkout')
-        self.assertEqual(self.posts[2][1],[{'productId':'placeholder','quantity':-1}])
-        self.assertEqual({p:q for p,q in self.cart.items() if q},{'milk':4,'juice':1})
+        self.assertEqual(self.posts[2][1],[{'productId':test_product_id('placeholder'),'quantity':-1}])
+        self.assertEqual({p:q for p,q in self.cart.items() if q},{test_product_id('milk'):4,test_product_id('juice'):1})
 
     def test_unavailable_product_is_failure_not_ready_or_silent_substitution(self):
         original = edit.post_edit
@@ -88,7 +89,7 @@ class WeeklyTests(unittest.TestCase):
         self.assertFalse(any(q > 0 for q in self.cart.values()))
 
     def test_more_than_twenty_lines_use_verified_bounded_batches(self):
-        self.cart = {f"old-{i}": 1 for i in range(35)}
+        self.cart = {test_product_id(f"old-{i}"): 1 for i in range(35)}
         self.order["items"] = [{"product_id": p, "name": p, "quantity": 1} for p in self.cart]
         result = weekly.run("weekly ocado")
         self.assertEqual(result["status"], "ready_for_checkout")
@@ -165,11 +166,11 @@ class WeeklyTests(unittest.TestCase):
 
     def test_weekly_with_recipes_adds_merged_quantities_and_records_selected_recipes(self):
         recipes.save_recipe('meal-one','Meal one',[
-            {'product_id':'milk','name':'Whole milk 1L','quantity':1},
-            {'product_id':'extra','name':'Extra product','quantity':2}],confirmed=True)
+            {'product_id':test_product_id('milk'),'name':'Whole milk 1L','quantity':1},
+            {'product_id':test_product_id('extra'),'name':'Extra product','quantity':2}],confirmed=True)
         result=weekly.run('weekly ocado, with Meal one',['Meal one'])
         self.assertEqual(result['status'],'ready_for_checkout')
-        self.assertEqual({p:q for p,q in self.cart.items() if q},{'milk':5,'juice':1,'extra':2})
+        self.assertEqual({p:q for p,q in self.cart.items() if q},{test_product_id('milk'):5,test_product_id('juice'):1,test_product_id('extra'):2})
         self.assertEqual(result['recipes'],[{'id':'meal-one','name':'Meal one','servings':None}])
         state=json.loads(weekly.run_path('order-next').read_text())
         self.assertEqual(state['recipe']['recipes'],result['recipes'])
@@ -178,20 +179,20 @@ class WeeklyTests(unittest.TestCase):
         repeat=weekly.run('weekly ocado')
         self.assertEqual(repeat['recipes'],[])
         self.assertGreater(len(self.posts),writes)
-        self.assertEqual({p:q for p,q in self.cart.items() if q},{'milk':4,'juice':1})
+        self.assertEqual({p:q for p,q in self.cart.items() if q},{test_product_id('milk'):4,test_product_id('juice'):1})
 
     def test_repeat_can_reopen_saved_order_and_use_new_recipe_selection(self):
         weekly.run('weekly ocado')
         self.editing=False
-        self.order['items']=[{'product_id':'milk','name':'Milk','quantity':4},
-                             {'product_id':'juice','name':'Juice','quantity':1}]
+        self.order['items']=[{'product_id':test_product_id('milk'),'name':'Milk','quantity':4},
+                             {'product_id':test_product_id('juice'),'name':'Juice','quantity':1}]
         recipes.save_recipe('meal-one','Meal one',[
-            {'product_id':'extra','name':'Recipe product','quantity':2}],confirmed=True)
+            {'product_id':test_product_id('extra'),'name':'Recipe product','quantity':2}],confirmed=True)
         writes=len(self.posts)
         result=weekly.run('redo weekly ocado with Meal one',['Meal one'])
         self.assertEqual(result['status'],'ready_for_checkout')
         self.assertEqual(self.posts[writes][0],edit.START_EDIT)
-        self.assertEqual(self.cart['extra'],2)
+        self.assertEqual(self.cart[test_product_id('extra')],2)
 
     def test_repeat_does_not_touch_another_orders_edit_session(self):
         weekly.run('weekly ocado')

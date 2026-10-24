@@ -1,3 +1,4 @@
+from ocado_test_ids import product_id as test_product_id
 import json
 import os
 import tempfile
@@ -8,7 +9,7 @@ from household_tools import recipes
 from household_tools.integrations import ocado, ocado_weekly as weekly, yoto
 
 
-def item(pid='shared', quantity=1):
+def item(pid=test_product_id('shared'), quantity=1):
     return {'product_id':pid,'name':'Confirmed product pack','quantity':quantity}
 
 
@@ -19,7 +20,7 @@ class RecipeTests(unittest.TestCase):
         env=patch.dict(os.environ, {'HERMES_HOME':directory.name,'OCADO_WEEKLY_ENABLED':'true'})
         env.start()
         self.addCleanup(env.stop)
-        weekly.save_recipe([item('shared',4),item('staple',1)],True)
+        weekly.save_recipe([item(test_product_id('shared'),4),item(test_product_id('staple'),1)],True)
 
     def save(self, recipe_id='meal-one', name='Meal one', items=None, **kwargs):
         return recipes.save_recipe(recipe_id,name,items if items is not None else [item()],confirmed=True,**kwargs)
@@ -50,12 +51,12 @@ class RecipeTests(unittest.TestCase):
 
     def test_plan_sums_staples_and_each_recipe_by_product_id_without_changing_files(self):
         before=weekly.recipe_path().read_bytes()
-        self.save(items=[item('shared',2),item('unique',1)],servings=4)
-        self.save('meal-two','Meal two',[item('shared',1),item('other',2)],servings=2)
+        self.save(items=[item(test_product_id('shared'),2),item(test_product_id('unique'),1)],servings=4)
+        self.save('meal-two','Meal two',[item(test_product_id('shared'),1),item(test_product_id('other'),2)],servings=2)
         plan=recipes.shopping_plan(['Meal one','meal-two'])
         self.assertEqual({i['product_id']:i['quantity'] for i in plan['items']},
-                         {'shared':7,'staple':1,'unique':1,'other':2})
-        line=next(i for i in plan['breakdown'] if i['product_id']=='shared')
+                         {test_product_id('shared'):7,test_product_id('staple'):1,test_product_id('unique'):1,test_product_id('other'):2})
+        line=next(i for i in plan['breakdown'] if i['product_id']==test_product_id('shared'))
         self.assertEqual(line['sources'],[{'source':'weekly staples','quantity':4},
             {'source':'Meal one','quantity':2},{'source':'Meal two','quantity':1}])
         self.assertEqual([r['servings'] for r in plan['recipes']],[4,2])
@@ -63,10 +64,10 @@ class RecipeTests(unittest.TestCase):
         self.assertEqual(recipes.get_recipe('Meal one')['items'][0]['quantity'],2)
 
     def test_unselected_recipes_are_not_added_and_distinct_products_are_not_merged(self):
-        self.save(items=[item('different-product',1)])
-        self.save('meal-two','Meal two',[item('not-selected',1)])
+        self.save(items=[item(test_product_id('different-product'),1)])
+        self.save('meal-two','Meal two',[item(test_product_id('not-selected'),1)])
         plan=recipes.shopping_plan(['Meal one'])
-        self.assertEqual({i['product_id'] for i in plan['items']},{'shared','staple','different-product'})
+        self.assertEqual({i['product_id'] for i in plan['items']},{test_product_id('shared'),test_product_id('staple'),test_product_id('different-product')})
         self.assertEqual(recipes.shopping_plan()['items'],weekly.load_recipe()['items'])
 
     def test_unknown_duplicate_ambiguous_and_invalid_requests_fail_before_ocado(self):
@@ -103,10 +104,10 @@ class RecipeTests(unittest.TestCase):
             with self.assertRaises(ocado.OcadoError):
                 recipes.recipe_path(rid)
         for bad in [[item(quantity=True)],[item(quantity=0)],[item(),item()],
-                    [{'product_id':'p','name':'label','quantity':1,'extra':'wrong'}]]:
+                    [{'product_id':'p','name':'label','quantity':1,test_product_id('extra'):'wrong'}]]:
             with self.assertRaises(ocado.OcadoError):
                 self.save(items=bad)
-        self.save(items=[item('shared',47)])
+        self.save(items=[item(test_product_id('shared'),47)])
         with self.assertRaisesRegex(ocado.OcadoError,'integers from 1 to 50'):
             recipes.shopping_plan(['Meal one'])
         path=recipes.recipe_path('meal-one')
