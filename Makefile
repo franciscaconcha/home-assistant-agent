@@ -1,4 +1,4 @@
-.PHONY: init build setup pair up down logs status doctor check yoto-login yoto-configure ocado-login ocado-configure ocado-check ocado-order-check ocado-enable-editing ocado-enable-weekly
+.PHONY: init build setup pair up down logs status doctor check yoto-login yoto-configure ocado-login ocado-configure ocado-check ocado-order-check ocado-enable-editing ocado-enable-weekly calendar-configure calendar-check
 
 init:
 	sh scripts/init.sh
@@ -58,3 +58,9 @@ ocado-enable-editing:
 
 ocado-enable-weekly:
 	docker compose run --rm --no-deps hermes /opt/household-tools/.venv/bin/household-ocado-enable-weekly
+
+calendar-configure:
+	docker compose run --rm --no-deps hermes /opt/household-tools/.venv/bin/household-calendar-configure
+
+calendar-check:
+	docker compose run --rm --no-deps hermes /opt/household-tools/.venv/bin/household-calendar-check

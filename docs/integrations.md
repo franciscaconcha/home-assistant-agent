@@ -11,6 +11,9 @@ Recipe files and their product mappings remain private runtime data.
 rules; conditional choices require verified current product data before order editing.
 No real credentials or fake shopping/player data are included.
 
+[Google Calendar setup](calendar.md) adds upcoming-event reads and individual event
+creation on one shared calendar using a service account. No public endpoint is needed.
+
 Add adapter modules under `src/household_tools/integrations/` when implementing each
 service, and register narrowly scoped functions in `server.py` with `@mcp.tool()`.
 Hermes starts this server over stdio; no separate HTTP server or public port is needed.

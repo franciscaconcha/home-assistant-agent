@@ -4,6 +4,7 @@ version = "0.1.0"
 description = "Personal household MCP tools for Hermes Agent"
 requires-python = ">=3.11,<3.15"
 dependencies = [
+    "google-auth[requests]>=2,<3",
     "httpx>=0.28,<1",
     "mcp>=1.12,<2",
     "paho-mqtt>=2.1,<3",
@@ -20,6 +21,8 @@ household-ocado-check = "household_tools.ocado_setup:check"
 household-ocado-order-check = "household_tools.ocado_setup:order_check"
 household-ocado-enable-editing = "household_tools.ocado_setup:enable_editing"
 household-ocado-enable-weekly = "household_tools.ocado_setup:enable_weekly"
+household-calendar-configure = "household_tools.calendar_setup:configure"
+household-calendar-check = "household_tools.calendar_setup:check"
 
 [project.optional-dependencies]
 ocado-login = [

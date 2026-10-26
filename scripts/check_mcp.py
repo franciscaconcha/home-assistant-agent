@@ -28,6 +28,7 @@ async def check(directory: str) -> None:
                 "household_list_recipes", "household_get_recipe", "household_save_recipe", "ocado_weekly_plan",
                 "ocado_plan_weekly_redo", "ocado_apply_weekly_redo",
                 "ocado_list_occasional_items", "ocado_get_occasional_item", "ocado_save_occasional_item",
+                "calendar_status", "calendar_list_events", "calendar_create_event",
             }
             result = await session.call_tool("household_status", {})
             assert not result.isError, result
@@ -58,6 +59,12 @@ async def check(directory: str) -> None:
                 "products": [{"product_id": None, "name": "Unmapped test product"}],
             })
             assert not extra.isError, extra
+            calendar = await session.call_tool("calendar_status", {})
+            assert not calendar.isError, calendar
+            unconfigured = await session.call_tool("calendar_create_event", {
+                "title": "Test event", "start": "2099-01-01T12:00:00+00:00",
+            })
+            assert unconfigured.isError, unconfigured
             extra = await session.call_tool("ocado_get_occasional_item", {"name": "Smoke extra"})
             assert not extra.isError, extra
     print("MCP stdio discovery and household_status passed.")
