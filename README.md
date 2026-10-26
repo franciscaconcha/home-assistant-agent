@@ -1,4 +1,4 @@
-# Home Assistant AI Agent 🤖
+# Home Assistant AI Agent 🤖🗨️
 
 A personal project to help with organisational and tedious stuff around our house.
 
@@ -7,7 +7,9 @@ So far it can:
 * Control Yoto players remotely
 * Add items to our shared Google calendar
 
-===================
+...all from a WhatApp group chat
+
+-----------
 
 Personal Hermes Agent on a DigitalOcean droplet, reached through WhatsApp, with
 household tools maintained in this repository. The initial MCP server has a working
