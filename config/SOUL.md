@@ -6,6 +6,13 @@ player status, shopping items, prices, or the result of an action.
 When Yoto is connected, use configured player aliases and volume limits. Ask which
 player when the request is ambiguous. Confirm before affecting several players.
 
+When the Yoto time tools are enabled, "Yoto morning"/"Yoto sun" means
+yoto_set_mode_now(mode="sun"); "Yoto night"/"Yoto moon" means mode="moon".
+These are temporary changes restored at the next usual schedule boundary, with no
+extra confirmation. Omit player when only one is configured. Use permanent-time tools
+only for explicit requests to change the daily schedule. Report verified saved settings
+and the local restore time; allow the player to sync rather than promising instant display.
+
 When Ocado is connected, begin with reading the shopping list. Ask for confirmation
 before changing quantities or removing items. Never check out, place an order, or
 change delivery details without explicit confirmation of that exact action.

@@ -12,9 +12,70 @@ from urllib.parse import parse_qs, urlencode, urlparse
 import yaml
 
 from household_tools.integrations import yoto
+from household_tools.integrations import yoto_schedule
 
 CALLBACK = "http://127.0.0.1:8787/callback"
 TOOLS = ["household_status", "yoto_list_players", "yoto_player_status", "yoto_playback", "yoto_set_volume"]
+SCHEDULE_TOOLS = ["yoto_get_day_night_times", "yoto_set_day_night_times", "yoto_set_mode_now", "yoto_restore_day_night_times"]
+SCHEDULE_GUIDANCE = """\n\n<!-- household-yoto-day-night-v1 -->
+Use yoto_get_day_night_times to read the configured player's daily morning/bedtime
+and local time zone. Use yoto_set_day_night_times for an explicit request to change
+these times; no extra confirmation is needed when the player and times are clear.
+Times are local 24-hour HH:MM; ask about ambiguous am/pm. These are persistent daily
+day/night mode settings, not alarms.
+For 'yoto morning' or 'yoto sun', immediately call yoto_set_mode_now(mode='sun');
+for 'yoto night' or 'yoto moon', call it with mode='moon'. These shortcuts are TEMPORARY:
+the worker restores normal times at the next usual morning/bedtime boundary. Do not
+change permanent times for a shortcut, ask for a time, or ask for extra confirmation.
+When only one player is configured, omit player. Say the usual schedule resumes and
+give restore_at in the returned local time zone. Never promise an instant display change.
+Use yoto_restore_day_night_times for 'restore usual Yoto schedule' or before an explicit
+permanent time change when an override is active. Weekday schedules are unsupported.
+Report verified saved settings; do not claim immediate device application while offline.
+After an uncertain update, read/check the saved settings instead of automatically retrying.
+"""
+
+
+def enable_schedule() -> None:
+    """Enable settings tools without changing existing player aliases or volume caps."""
+    try:
+        players = [p for p in yoto.list_players() if p.get("alias")]
+        if not players:
+            raise yoto.YotoError("No allowed players configured. Run make yoto-configure first.")
+        for player in players:
+            yoto_schedule.get_schedule(player["alias"])  # Read-only permission check.
+        path = yoto.home() / "config.yaml"
+        original = path.read_text()
+        config = yaml.safe_load(original) or {}
+        entry = config.setdefault("mcp_servers", {}).setdefault("household", {})
+        entry.setdefault("command", "/opt/household-tools/.venv/bin/household-tools")
+        entry.setdefault("env", {})["HERMES_HOME"] = str(yoto.home())
+        entry["timeout"] = max(entry.get("timeout", 90), 120)
+        tools = entry.setdefault("tools", {})
+        if "include" in tools:
+            tools["include"] = list(dict.fromkeys(tools["include"] + SCHEDULE_TOOLS))
+        elif not tools:
+            tools["include"] = TOOLS + SCHEDULE_TOOLS
+        if "exclude" in tools:
+            tools["exclude"] = [name for name in tools["exclude"] if name not in SCHEDULE_TOOLS]
+        entry.setdefault("sampling", {"enabled": False})
+        backup = path.with_name(f"config.before-yoto-times-{time.time_ns()}.yaml")
+        backup.touch(mode=0o600, exist_ok=False)
+        backup.write_text(original)
+        yoto.write_private(path, config)
+        soul = yoto.home() / "SOUL.md"
+        previous = soul.read_text() if soul.exists() else ""
+        if "<!-- household-yoto-day-night-v1 -->" not in previous:
+            if soul.exists():
+                backup = soul.with_name(f"SOUL.before-yoto-times-{time.time_ns()}.md")
+                backup.touch(mode=0o600, exist_ok=False)
+                backup.write_text(previous)
+            soul.touch(mode=0o600, exist_ok=True)
+            soul.write_text(previous + SCHEDULE_GUIDANCE)
+        print("Yoto day/night permission verified and tools enabled. No player settings changed.")
+        print("Existing aliases, volume caps and other integrations preserved. Run make up, then /reload-mcp on WhatsApp.")
+    except (yoto.YotoError, OSError, ValueError, TypeError) as error:
+        raise SystemExit(str(error) if isinstance(error, yoto.YotoError) else "Could not enable Yoto time tools; check data/config.yaml and permissions.") from None
 
 
 def check() -> None:

@@ -1,5 +1,20 @@
 name: hermes-home
 services:
+  yoto-schedule-worker:
+    image: hermes-home:local
+    entrypoint: [/opt/household-tools/.venv/bin/household-yoto-schedule-worker]
+    user: "${HERMES_UID:-1000}:${HERMES_GID:-1000}"
+    restart: unless-stopped
+    stop_grace_period: 45s
+    environment:
+      HERMES_HOME: /opt/data
+    volumes:
+      - ./data:/opt/data
+    logging:
+      driver: json-file
+      options:
+        max-size: 5m
+        max-file: "2"
   hermes:
     image: hermes-home:local
     build:

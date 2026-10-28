@@ -4,6 +4,8 @@ This integration uses Yoto's official OAuth/PKCE login, REST player discovery, a
 MQTT-over-TLS player controls. It supports listing players, live status, pause/resume/stop
 and capped volume. Starting a specific card and browsing the library are not implemented
 yet. Playback delivery is acknowledged by the broker; it is not proof the player acted.
+Optional day/night tools read/change daily morning and bedtime settings, and offer
+temporary sun/moon shortcuts with durable restoration of the usual schedule.
 
 ## 1. Register a personal app
 
@@ -13,6 +15,7 @@ At <https://dashboard.yoto.dev/>, create a **public client**, with callback URL
 - `family:library:view` (reserved for future card browsing)
 - `family:devices:view`
 - `family:devices:control`
+- `family:devices:manage` (for morning/bedtime settings and temporary sun/moon)
 - `offline_access`
 
 No client secret is used. The app remains unverified for personal use; Yoto shows a
@@ -91,7 +94,7 @@ This repository's tests use mocks; verify your own account and player behavior l
 relying on the integration.
 
 If a tool is missing, check `data/config.yaml` → `mcp_servers.household.tools.include`
-contains the five names in `config/config.yaml`, then recreate the gateway. Unknown alias:
+contains the Yoto tool names in `config/config.yaml`, then recreate the gateway. Unknown alias:
 use the alias returned by player discovery or run `make yoto-configure` while stopped.
 Expired/revoked login: stop the gateway and repeat the tunnel and login steps.
 
@@ -100,6 +103,80 @@ authorised, update/rebuild and run `make yoto-configure` while the gateway is st
 The household MCP entry must explicitly set `env.HERMES_HOME` to the active profile
 directory (`/opt/data` in this deployment). Hermes filters its MCP subprocess environment,
 so inheriting this variable implicitly does not work. Existing tokens need no new login.
+
+## Enable morning/bedtime settings and temporary sun/moon shortcuts
+
+In your existing app at <https://dashboard.yoto.dev/>, enable
+`family:devices:manage` while retaining the current scopes. This additional permission
+is required for both reading and changing device configuration.
+
+On the droplet:
+
+```sh
+git pull --ff-only
+make build
+make down
+```
+
+Open the same Mac SSH tunnel used for the original login (section 3), then run on the
+droplet:
+
+```sh
+make yoto-login
+make yoto-enable-times
+make up
+```
+
+Use the existing client ID, open the printed URL on your Mac and grant the new
+permission. There is no need to reselect players: `yoto-enable-times` preserves aliases,
+volume ceilings, model, WhatsApp, Ocado and Google Calendar settings. It checks read
+access, enables four tools and appends shortcut guidance; it changes no player settings.
+If setup fails, run `make up` to bring the existing gateway back, then resolve the error.
+Close the SSH tunnel after login completes. Send `/reload-mcp` on WhatsApp.
+
+Use these phrases:
+
+- **Yoto morning** or **Yoto sun**: temporarily select day mode now.
+- **Yoto night** or **Yoto moon**: temporarily select night mode now.
+- **Restore Felix's usual Yoto schedule**: end an override early.
+- **What are Felix's morning and bedtime times?**: read saved times and any override.
+- **Set Felix's morning to 07:00 and bedtime to 19:30**: explicitly change permanent
+  daily times. If an override is active, restore the usual times first.
+
+With one allowed player, shortcuts use it automatically. With several, specify the
+alias. Shortcuts do not require another confirmation or a time from you. They calculate
+the current time in the player's configured time zone and temporarily adjust its mode
+boundary. A player already in the requested scheduled mode needs no change. A player
+must be online for a shortcut; cloud restoration can proceed while it is offline.
+
+The original times are restored at the **next usual morning or bedtime boundary**,
+whichever comes first. For example, with usual times 07:00/19:30, “Yoto sun” at 06:00
+restores normal settings at 07:00; “Yoto moon” at 18:00 restores at 19:30. A repeat
+shortcut retains the original schedule, rather than saving the override as normal.
+Requesting the opposite mode can also restore the normal schedule early.
+
+The `yoto-schedule-worker` Compose service checks saved restoration tasks every 15
+seconds. Tasks live privately in `data/yoto-overrides/`, are saved before the remote
+update, and survive chat/container/droplet restarts. The worker must be healthy before
+a new temporary override is allowed. If the deployment is stopped or Yoto is unreachable,
+restoration waits until service resumes; the modified settings remain saved meanwhile.
+The reply reports verified saved settings and a restore time, not proof that the player
+display changed instantly. Allow time for Yoto's player to sync its cloud configuration.
+
+Restoration reads fresh settings and changes only the two mode times, preserving later
+unrelated app edits. If you changed the morning/bedtime or player time zone in the app,
+your new schedule wins and the old restore task is cancelled. An uncertain initial
+update retains the restore record; never loop the initial shortcut after an error.
+
+Check worker health with:
+
+```sh
+docker compose ps yoto-schedule-worker
+docker compose logs --tail=30 yoto-schedule-worker
+```
+
+These are day/night mode boundaries, not alarms, playback commands or weekday schedules.
+No live schedule mutation is run by the repository's automated tests.
 
 ## Diagnose a persistent status connection error
 

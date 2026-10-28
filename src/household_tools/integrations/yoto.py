@@ -18,7 +18,7 @@ import paho.mqtt.client as mqtt
 API = "https://api.yotoplay.com"
 TOKEN_URL = "https://login.yotoplay.com/oauth/token"
 BROKER = "aqrphjqbp3u2z-ats.iot.eu-west-2.amazonaws.com"
-SCOPES = "family:library:view family:devices:view family:devices:control offline_access"
+SCOPES = "family:library:view family:devices:view family:devices:control family:devices:manage offline_access"
 
 
 class YotoError(ValueError):
@@ -95,7 +95,7 @@ def access_token(force: bool = False) -> str:
             raise YotoError("Yoto is not authorised. Run make yoto-login on the droplet.") from None
 
 
-def api_get(path: str) -> dict:
+def api_get(path: str, permission: str | None = None) -> dict:
     token = access_token()
     try:
         response = httpx.get(API + path, headers={"Authorization": f"Bearer {token}"}, timeout=15)
@@ -103,6 +103,8 @@ def api_get(path: str) -> dict:
             token = access_token(force=True)
             response = httpx.get(API + path, headers={"Authorization": f"Bearer {token}"}, timeout=15)
         if response.status_code != 200:
+            if response.status_code == 403 and permission:
+                raise YotoError(f"Yoto denied settings access (HTTP 403). Enable {permission} in the Yoto developer dashboard, then run make yoto-login again.")
             raise YotoError(f"Yoto API returned HTTP {response.status_code}; check account permissions.")
         return response.json()
     except (httpx.HTTPError, ValueError) as error:
@@ -133,7 +135,7 @@ def list_players() -> list[dict]:
     return players
 
 
-def selected_player(alias: str) -> tuple[dict, int]:
+def selected_player(alias: str, require_online: bool = True) -> tuple[dict, int]:
     try:
         config = json.loads((home() / "yoto-players.json").read_text())
         item = config["players"][alias]
@@ -147,7 +149,7 @@ def selected_player(alias: str) -> tuple[dict, int]:
     player = next((p for p in list_players() if p["device_id"] == device_id), None)
     if player is None:
         raise YotoError("The configured player is not in the authorised Yoto account.")
-    if not player["online"]:
+    if require_online and not player["online"]:
         raise YotoError("The selected Yoto player is offline.")
     return player, maximum
 

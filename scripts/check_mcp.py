@@ -22,7 +22,7 @@ async def check(directory: str) -> None:
             tools = await session.list_tools()
             assert {tool.name for tool in tools.tools} == {
                 "household_status", "yoto_list_players", "yoto_player_status",
-                "yoto_playback", "yoto_set_volume", "ocado_basket", "ocado_next_order",
+                "yoto_playback", "yoto_set_volume", "yoto_get_day_night_times", "yoto_set_day_night_times", "yoto_set_mode_now", "yoto_restore_day_night_times", "ocado_basket", "ocado_next_order",
                 "ocado_plan_order_changes", "ocado_apply_order_changes",
                 "ocado_weekly_list", "ocado_set_weekly_list", "ocado_weekly_shop",
                 "household_list_recipes", "household_get_recipe", "household_save_recipe", "ocado_weekly_plan",
@@ -37,6 +37,8 @@ async def check(directory: str) -> None:
             }, result
             denied = await session.call_tool("yoto_playback", {"player": "missing", "action": "pause"})
             assert denied.isError, denied
+            invalid_time = await session.call_tool("yoto_set_day_night_times", {"player": "missing", "bedtime": "25:99"})
+            assert invalid_time.isError, invalid_time
             missing = await session.call_tool("ocado_basket", {})
             assert missing.isError, missing
             disabled = await session.call_tool("ocado_apply_order_changes", {"plan_id": "0" * 32, "confirmed": True})

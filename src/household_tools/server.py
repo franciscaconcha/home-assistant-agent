@@ -2,6 +2,8 @@
 
 from mcp.server.fastmcp import FastMCP
 from household_tools.integrations import yoto
+from household_tools.integrations import yoto_schedule
+from household_tools.integrations import yoto_override
 from household_tools.integrations import ocado
 from household_tools.integrations import ocado_edit
 from household_tools.integrations import ocado_weekly
@@ -45,6 +47,30 @@ def yoto_playback(player: str, action: str) -> dict:
 def yoto_set_volume(player: str, volume: int) -> dict:
     """Set integer volume percentage, within the operator's per-player maximum."""
     return yoto.set_volume(player, volume)
+
+
+@mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
+def yoto_get_day_night_times(player: str) -> dict:
+    """Read morning/day-mode and bedtime/night-mode boundaries and the player's local time zone for one exact configured alias. These are daily settings, not alarms."""
+    return yoto_schedule.get_schedule(player)
+
+
+@mcp.tool(annotations=ToolAnnotations(readOnlyHint=False, destructiveHint=False, idempotentHint=True))
+def yoto_set_day_night_times(player: str, morning_time: str | None = None, bedtime: str | None = None) -> dict:
+    """On an explicit request, change one configured Yoto player's daily morning and/or bedtime in its local time (24-hour HH:MM). No extra confirmation when player/times are clear; clarify ambiguous am/pm. Omit the unchanged time. Preserves other settings and verifies the saved result. These persist every day: not alarms, playback schedules, weekday rules or tonight-only overrides. Clarify temporary requests before changing daily settings. Never auto-retry an uncertain write; read settings/check app first."""
+    return yoto_schedule.set_schedule(player, morning_time, bedtime)
+
+
+@mcp.tool(annotations=ToolAnnotations(readOnlyHint=False, destructiveHint=False))
+def yoto_set_mode_now(mode: str, player: str | None = None) -> dict:
+    """For 'Yoto morning'/'Yoto sun', use mode=sun; 'Yoto night'/'Yoto moon', mode=moon. Switch temporarily now via day/night settings, automatically restoring the usual schedule at its next normal boundary. No extra confirmation. Omit player only when exactly one player is configured. Uses the player's current local time, never guessed times. Requires online player and healthy restore worker; only claims verified saved settings, not immediate device display. Report restore_at in local time. Does not start/stop audio or create an alarm."""
+    return yoto_override.switch_now(mode, player)
+
+
+@mcp.tool(annotations=ToolAnnotations(readOnlyHint=False, destructiveHint=False, idempotentHint=True))
+def yoto_restore_day_night_times(player: str | None = None) -> dict:
+    """End a temporary sun/moon override early and restore usual daily morning/bedtime. Omit player when only one configured. Leaves later app schedule edits intact. Use before an explicitly requested permanent time change when an override is active."""
+    return yoto_override.restore(player)
 
 
 @mcp.tool()

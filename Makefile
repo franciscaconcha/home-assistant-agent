@@ -42,6 +42,10 @@ yoto-configure:
 yoto-check:
 	docker compose exec hermes /opt/household-tools/.venv/bin/household-yoto-check
 
+.PHONY: yoto-enable-times
+yoto-enable-times:
+	docker compose run --rm --no-deps hermes /opt/household-tools/.venv/bin/household-yoto-enable-times
+
 # Run on the Mac: manual browser login, with the session stored in ignored data/.
 ocado-login:
 	uv run --locked --extra ocado-login python -m playwright install chromium
