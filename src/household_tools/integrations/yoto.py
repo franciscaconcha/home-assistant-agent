@@ -160,7 +160,9 @@ def mqtt_request(device_id: str, command: str, payload: str, read_status: bool =
                          transport="websockets", reconnect_on_failure=False)
     client.connect_timeout = 8
     context = ssl.create_default_context()
-    context.set_alpn_protocols(["x-amzn-mqtt-ca"])
+    # WebSockets start with an HTTP/1.1 upgrade. x-amzn-mqtt-ca selects AWS's
+    # raw MQTT/client-certificate route and resets this JWT-based connection.
+    context.set_alpn_protocols(["http/1.1"])
     client.tls_set_context(context)
     client.ws_set_options(path="/mqtt")
     client.username_pw_set(f"{device_id}?x-amz-customauthorizer-name=PublicJWTAuthorizer", access_token())

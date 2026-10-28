@@ -103,6 +103,14 @@ so inheriting this variable implicitly does not work. Existing tokens need no ne
 
 ## Diagnose a persistent status connection error
 
+For a connection reset on versions before the WebSocket TLS fix, update, rebuild and
+recreate the gateway first. The integration previously advertised `x-amzn-mqtt-ca` in
+TLS ALPN. AWS assigns this to raw MQTT with client certificates, not the HTTP WebSocket
+upgrade used here. A credential-free probe reproduced a TLS connection reset with that
+setting and HTTP 101 Switching Protocols with `http/1.1`. The integration now advertises
+`http/1.1`; server certificate and hostname verification stay enabled. This transport
+probe confirms the handshake, not account authorisation or successful player status.
+
 Player discovery uses HTTPS; live status uses a separate MQTT-over-WebSocket connection.
 A successful player list does not prove the status connection works or that its control
 scope was granted. Repeated connection failures are not evidence of a transient outage.
@@ -134,3 +142,4 @@ Sources:
 - <https://yoto.dev/players-mqtt/connecting-to-players/>
 - <https://yoto.dev/players-mqtt/getting-player-status/>
 - <https://yoto.dev/players-mqtt/mqtt-docs/>
+- <https://docs.aws.amazon.com/iot/latest/developerguide/protocols.html>

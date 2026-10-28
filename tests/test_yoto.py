@@ -137,6 +137,24 @@ class YotoTests(unittest.TestCase):
         client.disconnect.assert_called_once()
         client.loop_stop.assert_called_once()
 
+    def test_websocket_tls_uses_http_route_and_keeps_certificate_verification(self):
+        client = Mock()
+        client.connect.side_effect = ConnectionResetError()
+        context = ssl.create_default_context()
+        with patch.object(yoto.ssl, "create_default_context", return_value=context), \
+                patch.object(context, "set_alpn_protocols", wraps=context.set_alpn_protocols) as alpn, \
+                patch.object(yoto.mqtt, "Client", return_value=client), \
+                patch.object(yoto, "access_token", return_value="test"):
+            with self.assertRaises(yoto.YotoError):
+                yoto.mqtt_request("player-one", "status/request", "", True)
+        alpn.assert_called_once_with(["http/1.1"])
+        self.assertTrue(context.check_hostname)
+        self.assertEqual(context.verify_mode, ssl.CERT_REQUIRED)
+        client.tls_set_context.assert_called_once_with(context)
+        client.ws_set_options.assert_called_once_with(path="/mqtt")
+        client.username_pw_set.assert_called_once_with(
+            "player-one?x-amz-customauthorizer-name=PublicJWTAuthorizer", "test")
+
     def test_mqtt_delivery_does_not_claim_device_execution(self):
         client = Mock()
         client.loop_start.side_effect = lambda: client.on_connect(
