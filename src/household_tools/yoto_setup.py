@@ -17,6 +17,31 @@ CALLBACK = "http://127.0.0.1:8787/callback"
 TOOLS = ["household_status", "yoto_list_players", "yoto_player_status", "yoto_playback", "yoto_set_volume"]
 
 
+def check() -> None:
+    """Read discovery and live status separately; never change playback."""
+    try:
+        players = yoto.list_players()
+    except yoto.YotoError as error:
+        raise SystemExit(f"Player discovery failed: {error}") from None
+    print("Player discovery succeeded.", flush=True)
+    configured = [player for player in players if player.get("alias")]
+    if not configured:
+        raise SystemExit("No configured player aliases found. Run make yoto-configure while the gateway is stopped.")
+    failed = False
+    for player in configured:
+        alias = player["alias"]
+        print(f"{alias}: online={bool(player['online'])}", flush=True)
+        try:
+            yoto.player_status(alias)
+            print(f"{alias}: live status read succeeded.", flush=True)
+        except yoto.YotoError as error:
+            failed = True
+            print(f"{alias}: live status read failed: {error}", flush=True)
+    print("No playback change was requested.", flush=True)
+    if failed:
+        raise SystemExit(1)
+
+
 def login_url(client_id: str, verifier: str, state: str) -> str:
     challenge = base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest()).rstrip(b"=").decode()
     return "https://login.yotoplay.com/authorize?" + urlencode({

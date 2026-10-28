@@ -2,6 +2,8 @@ import base64
 import hashlib
 import json
 import os
+import socket
+import ssl
 import tempfile
 import time
 import unittest
@@ -145,6 +147,45 @@ class YotoTests(unittest.TestCase):
         self.assertTrue(result["sent"])
         self.assertFalse(result["execution_confirmed"])
         client.publish.assert_called_once_with("device/player-one/command/card/pause", "{}", qos=1)
+
+    def test_connection_failures_identify_transport_stage_without_leaking_details(self):
+        cases = [
+            (socket.gaierror("PRIVATE_TOKEN"), "DNS lookup"),
+            (ssl.SSLCertVerificationError("PRIVATE_TOKEN"), "TLS certificate"),
+            (ssl.SSLError("PRIVATE_TOKEN"), "TLS handshake"),
+            (yoto.mqtt.WebsocketConnectionError("PRIVATE_TOKEN"), "WebSocket upgrade"),
+            (TimeoutError("PRIVATE_TOKEN"), "timed out"),
+            (ConnectionRefusedError("PRIVATE_TOKEN"), "refused"),
+            (ConnectionResetError("PRIVATE_TOKEN"), "reset"),
+        ]
+        for failure, expected in cases:
+            with self.subTest(expected=expected):
+                client = Mock()
+                client.connect.side_effect = failure
+                with patch.object(yoto.mqtt, "Client", return_value=client), patch.object(yoto, "access_token", return_value="PRIVATE_TOKEN"):
+                    with self.assertRaises(yoto.YotoError) as caught:
+                        yoto.mqtt_request("player-one", "status/request", "", True)
+                self.assertIn(expected, str(caught.exception))
+                self.assertIn("No playback change was requested", str(caught.exception))
+                self.assertNotIn("PRIVATE_TOKEN", str(caught.exception))
+                client.connect.assert_called_once_with(yoto.BROKER, 443, keepalive=10)
+                client.connect_async.assert_not_called()
+                client.publish.assert_not_called()
+                client.disconnect.assert_called_once()
+                client.loop_stop.assert_called_once()
+
+    def test_check_reports_discovery_and_status_separately_without_playback(self):
+        player = {"alias": "bedroom", "online": True}
+        with patch.object(yoto, "list_players", return_value=[player]), \
+                patch.object(yoto, "player_status", side_effect=yoto.YotoError("WebSocket upgrade failed")) as status, \
+                patch.object(yoto, "playback") as playback, patch("builtins.print") as output:
+            with self.assertRaises(SystemExit) as caught:
+                yoto_setup.check()
+        self.assertEqual(caught.exception.code, 1)
+        status.assert_called_once_with("bedroom")
+        playback.assert_not_called()
+        self.assertIn("Player discovery succeeded", repr(output.call_args_list))
+        self.assertIn("WebSocket upgrade failed", repr(output.call_args_list))
 
     def test_configuration_preserves_model_whatsapp_and_other_tools(self):
         path = yoto.home() / "config.yaml"

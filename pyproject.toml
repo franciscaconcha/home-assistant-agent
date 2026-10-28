@@ -15,6 +15,7 @@ dependencies = [
 household-tools = "household_tools.server:main"
 household-yoto-login = "household_tools.yoto_setup:login"
 household-yoto-configure = "household_tools.yoto_setup:configure"
+household-yoto-check = "household_tools.yoto_setup:check"
 household-ocado-login = "household_tools.ocado_setup:login"
 household-ocado-configure = "household_tools.ocado_setup:configure"
 household-ocado-check = "household_tools.ocado_setup:check"

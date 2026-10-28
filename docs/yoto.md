@@ -101,6 +101,32 @@ The household MCP entry must explicitly set `env.HERMES_HOME` to the active prof
 directory (`/opt/data` in this deployment). Hermes filters its MCP subprocess environment,
 so inheriting this variable implicitly does not work. Existing tokens need no new login.
 
+## Diagnose a persistent status connection error
+
+Player discovery uses HTTPS; live status uses a separate MQTT-over-WebSocket connection.
+A successful player list does not prove the status connection works or that its control
+scope was granted. Repeated connection failures are not evidence of a transient outage.
+
+After updating and rebuilding, restart the gateway, then run:
+
+```sh
+make yoto-check
+```
+
+This runs inside the existing container with its active profile. It prints discovery
+success, each configured alias's online flag and whether its live status can be read.
+It does not print tokens, device IDs or status contents, and does not change playback.
+Avoid running it concurrently with other Yoto requests: Yoto uses a player-specific MQTT
+client ID, so overlapping connections can displace each other.
+
+The updated status tool also reports DNS, certificate/TLS, WebSocket upgrade and MQTT
+authentication failures separately. The previous asynchronous connection path reduced
+these to “Could not connect to Yoto's player service.” A WebSocket upgrade error happens
+before MQTT authentication, so do not assume reauthorising will fix it. DNS/network errors
+need investigation from the droplet; TLS verification remains enabled. Authentication
+rejection needs a check of the app's `family:devices:control` grant and login. A status
+timeout after connection/subscription is a different failure: check the player itself.
+
 Sources:
 - <https://yoto.dev/authentication/headless-cli-auth/>
 - <https://yoto.dev/authentication/scopes/>

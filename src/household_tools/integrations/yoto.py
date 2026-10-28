@@ -4,6 +4,7 @@ import fcntl
 import json
 import os
 import re
+import socket
 import ssl
 import tempfile
 import threading
@@ -170,10 +171,6 @@ def mqtt_request(device_id: str, command: str, payload: str, read_status: bool =
             errors.append("Yoto MQTT authentication failed; try signing in again.")
         connected.set()
 
-    def on_connect_fail(c, userdata):
-        errors.append("Could not connect to Yoto's player service.")
-        connected.set()
-
     def on_subscribe(c, userdata, mid, reasons, properties):
         if any(reason.is_failure for reason in reasons):
             errors.append("Yoto denied the status subscription.")
@@ -192,13 +189,16 @@ def mqtt_request(device_id: str, command: str, payload: str, read_status: bool =
                 errors.append("Yoto returned an invalid status response.")
             received.set()
 
-    client.on_connect, client.on_connect_fail = on_connect, on_connect_fail
+    client.on_connect = on_connect
     client.on_subscribe, client.on_message = on_subscribe, on_message
     try:
-        client.connect_async(BROKER, 443, keepalive=60)
+        # Paho's asynchronous first connection discards the underlying exception.
+        # Establish transport here so DNS/TLS/WebSocket failures remain diagnosable.
+        # Paho also uses keepalive as the WebSocket handshake socket timeout.
+        client.connect(BROKER, 443, keepalive=10)
         client.loop_start()
         if not connected.wait(10):
-            raise YotoError("Timed out connecting to Yoto's player service.")
+            raise YotoError("Yoto transport connected but MQTT acknowledgement timed out; authentication was not confirmed.")
         if errors:
             raise YotoError(errors[0])
         if read_status:
@@ -215,7 +215,25 @@ def mqtt_request(device_id: str, command: str, payload: str, read_status: bool =
         return {"sent": True, "execution_confirmed": False,
                 "note": "Broker accepted the command; player execution is not confirmed."}
     except (OSError, RuntimeError) as error:
-        raise YotoError("Yoto connection failed; command execution is unknown. Check the player before retrying.") from None
+        # Never echo exception text: libraries may include credentials or responses.
+        if isinstance(error, socket.gaierror):
+            detail = "DNS lookup failed for Yoto's player service"
+        elif isinstance(error, ssl.SSLCertVerificationError):
+            detail = "TLS certificate verification failed for Yoto's player service"
+        elif isinstance(error, ssl.SSLError):
+            detail = "TLS handshake failed with Yoto's player service"
+        elif isinstance(error, mqtt.WebsocketConnectionError):
+            detail = "WebSocket upgrade failed at Yoto's player service (before MQTT authentication)"
+        elif isinstance(error, TimeoutError):
+            detail = "Network connection/handshake timed out at Yoto's player service"
+        elif isinstance(error, ConnectionRefusedError):
+            detail = "Yoto's player-service connection was refused"
+        elif isinstance(error, ConnectionResetError):
+            detail = "Yoto's player-service connection was reset"
+        else:
+            detail = "Yoto player-service network/transport operation failed"
+        outcome = "No playback change was requested." if read_status else "Command execution is unknown; check the player before retrying."
+        raise YotoError(f"{detail}. {outcome}") from None
     finally:
         client.disconnect()
         client.loop_stop()
