@@ -61,6 +61,27 @@ status when available. These diagnostics omit URLs, query strings, passwords, co
 tokens and response bodies. A generic HTTP rejection is not evidence that the password
 was wrong. Share only the stage/status; keep SDK debug/raw-response logging disabled.
 
+## Read check works but WhatsApp reports login renewal
+
+On older versions, `make alexa-check` ran as the container's root user. Refreshing the
+session atomically replaced `credentials/alexa.json` with a root-owned, mode-600 file,
+which the normal Hermes user could no longer read. A successful root check could thus
+cause a subsequent bot failure even though the login was valid.
+
+Update and repair from the droplet repository while the gateway is running:
+
+```sh
+git pull --ff-only
+make alexa-fix-permissions
+make alexa-check
+```
+
+No rebuild or fresh Amazon login is needed for this repair. The updated check runs as
+the container's `hermes` user. The repair changes ownership of only the Alexa session
+and lock files, keeping mode 600. It does not print tokens or alter the shopping list.
+Send `/reload-mcp` on WhatsApp and retry the read-only match preview. The Yoto read
+check now also runs as `hermes` to avoid the same problem when refreshing its tokens.
+
 ## Product choices
 
 Entries are matched by exact saved names/aliases to occasional preferences or exact

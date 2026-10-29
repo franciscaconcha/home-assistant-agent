@@ -3,7 +3,7 @@
 init:
 	sh scripts/init.sh
 
-.PHONY: alexa-login alexa-enable alexa-check
+.PHONY: alexa-login alexa-enable alexa-check alexa-fix-permissions
 alexa-login:
 	docker compose run --rm --no-deps hermes /opt/household-tools/.venv/bin/household-alexa-login
 
@@ -11,7 +11,12 @@ alexa-enable:
 	docker compose run --rm --no-deps hermes /opt/household-tools/.venv/bin/household-alexa-enable
 
 alexa-check:
-	docker compose exec hermes /opt/household-tools/.venv/bin/household-alexa-check
+	docker compose exec --user hermes hermes /opt/household-tools/.venv/bin/household-alexa-check
+
+# Older root-run checks atomically replaced the private token file as root:600.
+# Repair only the Alexa session/lock; never make credentials world-readable.
+alexa-fix-permissions:
+	docker compose exec --user root hermes sh -ec 'for file in /opt/data/credentials/alexa.json /opt/data/credentials/alexa.lock; do if [ -f "$$file" ]; then chown hermes "$$file"; chmod 600 "$$file"; fi; done'
 
 build:
 	docker compose build --pull
@@ -50,7 +55,7 @@ yoto-configure:
 
 .PHONY: yoto-check
 yoto-check:
-	docker compose exec hermes /opt/household-tools/.venv/bin/household-yoto-check
+	docker compose exec --user hermes hermes /opt/household-tools/.venv/bin/household-yoto-check
 
 .PHONY: yoto-enable-times
 yoto-enable-times:
