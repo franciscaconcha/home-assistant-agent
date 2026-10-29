@@ -29,9 +29,7 @@ were completed. A plain weekly request intentionally excludes Alexa. Checkout is
 
 
 def login():
-    site = input("Amazon website [https://www.amazon.co.uk]: ").strip() or "https://www.amazon.co.uk"
-    if site not in alexa.SITES:
-        raise SystemExit("Use a supported full Amazon website address, such as https://www.amazon.co.uk.")
+    site = "https://www.amazon.com"  # SDK bootstrap; account region is detected after sign-in.
     email = input("Amazon email: ").strip()
     password = getpass.getpass("Amazon password (not saved): ")
     otp = getpass.getpass("Current authenticator code (not saved): ")

@@ -9,12 +9,48 @@ import sys
 from contextlib import contextmanager
 from concurrent.futures import ThreadPoolExecutor
 from http import HTTPMethod
-from urllib.parse import quote
+from urllib.parse import quote, urlparse
 
 from household_tools.integrations import ocado, yoto
 
 SITES = {"https://www.amazon.co.uk", "https://www.amazon.com", "https://www.amazon.es", "https://www.amazon.de", "https://www.amazon.fr", "https://www.amazon.it"}
 MAX_ACTIVE = 100
+
+
+class RequestDiagnostics:
+    """Retain only a fixed stage label and HTTP status, never request contents."""
+
+    def __init__(self):
+        self.stage = "Amazon request"
+        self.status = None
+
+    def record(self, url, status=None):
+        path = urlparse(str(url)).path
+        if path.startswith("/alexashoppinglists/"):
+            self.stage = "shopping-list access"
+        elif path == "/auth/register":
+            self.stage = "Alexa app registration"
+        elif path.endswith("/capabilities"):
+            self.stage = "Alexa app capabilities registration"
+        elif path == "/auth/token":
+            self.stage = "session refresh"
+        elif path == "/ap/exchangetoken":
+            self.stage = "session cookie refresh"
+        elif path.startswith("/ap/"):
+            self.stage = "Amazon sign-in"
+        elif path == "/api/users/me":
+            self.stage = "Alexa account discovery"
+        else:
+            self.stage = "Amazon request"
+        self.status = status if type(status) is int and 100 <= status <= 599 else None
+
+    def failure(self, error):
+        code = type(error).__name__
+        allowed = {"CannotRetrieveData", "CannotAuthenticate", "CannotRegisterDevice", "CannotConnect", "MissingCountryError", "TimeoutError", "KeyError", "TypeError", "AttributeError", "ValueError"}
+        code = code if code in allowed else "ConnectorError"
+        status = f"; HTTP {self.status}" if self.status is not None else ""
+        # Never copy exception text: some SDK errors include whole URLs and responses.
+        return ocado.OcadoError(f"Alexa failed during {self.stage} ({code}{status}). Login/list access was not confirmed. Share this stage/status for diagnosis; do not share credentials or enable raw SDK debug logs.")
 
 
 def config_path():
@@ -53,7 +89,19 @@ def dependencies():
     from aioamazondevices.structures import AmazonSaveDataConfig
     # The upstream debug logger can contain cookies, URLs and raw account responses.
     logging.getLogger("aioamazondevices").disabled = True
-    return ClientSession, ClientTimeout, AmazonHttpWrapper, AmazonSessionStateData, AmazonLogin, AmazonSaveDataConfig
+    class CompatibleLogin(AmazonLogin):
+        # Amazon currently serves both combined and separate credential forms.
+        # The SDK's loop submits email first, so include the password at that step
+        # only when the same returned form actually asks for both fields.
+        def _get_inputs_from_soup(self, soup):
+            values = super()._get_inputs_from_soup(soup)
+            form = soup.find("form", {"name": "signIn"}) or soup.find("form")
+            for name, value in (("email", self._session_state_data.login_email),
+                                ("password", self._session_state_data.login_password)):
+                if form is not None and form.find("input", {"name": name}) is not None:
+                    values[name] = value
+            return values
+    return ClientSession, ClientTimeout, AmazonHttpWrapper, AmazonSessionStateData, CompatibleLogin, AmazonSaveDataConfig
 
 
 class ShoppingSession:
@@ -117,8 +165,21 @@ class ShoppingSession:
 
 async def connection(operation, *, site, email="", password="", otp=None, stored=None):
     ClientSession, ClientTimeout, Wrapper, State, Login, Save = dependencies()
-    async with ClientSession(timeout=ClientTimeout(total=20)) as http:
-        state = State(site, email, password, stored)
+    from aiohttp import TraceConfig
+    diagnostics = RequestDiagnostics()
+    trace = TraceConfig()
+    async def started(session, context, params):
+        diagnostics.record(params.url)
+    async def ended(session, context, params):
+        diagnostics.record(params.response.url, params.response.status)
+    trace.on_request_start.append(started)
+    trace.on_request_end.append(ended)
+    async with ClientSession(timeout=ClientTimeout(total=20), trace_configs=[trace]) as http:
+        # Match the SDK's mobile-app login bootstrap. Regional app sign-in can
+        # return HTTP 404 before credentials are sent. Interactive login discovers
+        # and switches to the account's region; stored sessions retain that region.
+        login_site = "https://www.amazon.com" if otp is not None else site
+        state = State(login_site, email, password, stored)
         wrapper = Wrapper(http, state, Save(path=yoto.home(), callback=None))
         login = Login(wrapper, state)
         try:
@@ -127,6 +188,10 @@ async def connection(operation, *, site, email="", password="", otp=None, stored
             else:
                 await login.login_mode_stored_data()
             return await operation(ShoppingSession(wrapper, state.retail_site_url.human_repr().rstrip("/")))
+        except ocado.OcadoError:
+            raise
+        except Exception as error:
+            raise diagnostics.failure(error) from None
         finally:
             data = state.login_stored_data
             if data.get("refresh_token") and data.get("device_info"):

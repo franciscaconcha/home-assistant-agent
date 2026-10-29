@@ -64,7 +64,7 @@ class AlexaProtocolTests(unittest.IsolatedAsyncioTestCase):
         dependencies = (Session, lambda **kwargs: None, lambda *args: None, State, Login, lambda **kwargs: None)
         with tempfile.TemporaryDirectory() as directory, patch.dict(os.environ, {"HERMES_HOME": directory}), \
                 patch.object(alexa, "dependencies", return_value=dependencies):
-            with self.assertRaises(RuntimeError):
+            with self.assertRaises(ocado.OcadoError):
                 await alexa.connection(failed, site="https://www.amazon.co.uk", email="private-email", password="PRIVATE_PASSWORD",
                     stored={"device_info": {"device_serial_number": "PRIVATE_SERIAL"}, "site": "https://www.amazon.co.uk"})
             saved = alexa.credentials_path().read_text()
@@ -72,6 +72,64 @@ class AlexaProtocolTests(unittest.IsolatedAsyncioTestCase):
             self.assertNotIn("PRIVATE_PASSWORD", saved)
             self.assertNotIn("private-email", saved)
             self.assertEqual(alexa.credentials_path().stat().st_mode & 0o777, 0o600)
+
+    def test_diagnostics_expose_only_fixed_stage_status_and_exception_category(self):
+        cases = [("/ap/signin", "Amazon sign-in"), ("/auth/register", "Alexa app registration"),
+                 ("/v1/devices/@self/capabilities", "Alexa app capabilities registration"),
+                 ("/alexashoppinglists/api/v2/lists/PRIVATE_LIST/items/fetch", "shopping-list access")]
+        for path, stage in cases:
+            with self.subTest(stage=stage):
+                diagnostic = alexa.RequestDiagnostics()
+                diagnostic.record("https://www.amazon.co.uk" + path + "?token=PRIVATE_TOKEN&password=PRIVATE_PASSWORD", 400)
+                error = diagnostic.failure(ValueError("PRIVATE_RESPONSE PRIVATE_PASSWORD"))
+                self.assertIn(stage, str(error))
+                self.assertIn("HTTP 400", str(error))
+                self.assertNotIn("PRIVATE", str(error))
+                self.assertNotIn("amazon.co.uk", repr(vars(diagnostic)))
+
+    async def test_interactive_login_bootstraps_globally_but_stored_sessions_keep_uk_region(self):
+        created_sites = []
+        class Session:
+            def __init__(self, **kwargs): pass
+            async def __aenter__(self): return self
+            async def __aexit__(self, *args): pass
+        class State:
+            def __init__(self, site, email, password, stored):
+                created_sites.append(site)
+                self.login_stored_data = {}
+                self.retail_site_url = SimpleNamespace(human_repr=lambda: site)
+        class Login:
+            def __init__(self, wrapper, state): self.state = state
+            async def login_mode_interactive(self, otp):
+                self.state.retail_site_url = SimpleNamespace(human_repr=lambda: "https://www.amazon.co.uk")
+            async def login_mode_stored_data(self): pass
+        async def regional_site(client): return client.site
+        dependencies = (Session, lambda **kwargs: None, lambda *args: None, State, Login, lambda **kwargs: None)
+        with patch.object(alexa, "dependencies", return_value=dependencies):
+            for otp in ("123456", None):
+                result = await alexa.connection(regional_site, site="https://www.amazon.co.uk", otp=otp)
+                self.assertEqual(result, "https://www.amazon.co.uk")
+        self.assertEqual(created_sites, ["https://www.amazon.com", "https://www.amazon.co.uk"])
+
+    def test_login_accepts_combined_or_split_forms_without_sending_password_to_email_only_form(self):
+        from bs4 import BeautifulSoup
+        _, _, _, State, Login, _ = alexa.dependencies()
+        state = State("https://www.amazon.com", "test@example.invalid", "PRIVATE_TEST_PASSWORD", None)
+        login = Login(Mock(), state)
+        hidden = '<input type="hidden" name="csrf" value="TEST_CSRF">'
+        for names in [("email", "password"), ("email",), ("password",), ("otpCode",)]:
+            with self.subTest(names=names):
+                fields = ''.join(f'<input name="{name}">' for name in names)
+                soup = BeautifulSoup('<form name="signIn">' + hidden + fields + '</form>', 'html.parser')
+                result = login._get_inputs_from_soup(soup)
+                self.assertEqual(result["csrf"], "TEST_CSRF")
+                self.assertEqual("email" in result, "email" in names)
+                self.assertEqual("password" in result, "password" in names)
+                if "password" in names:
+                    self.assertEqual(result["password"], "PRIVATE_TEST_PASSWORD")
+        soup = BeautifulSoup('<form name="signIn"><input name="email"></form>'
+                             '<form><input name="password"></form>', 'html.parser')
+        self.assertNotIn("password", login._get_inputs_from_soup(soup))
 
     async def test_sync_tool_adapter_works_inside_running_mcp_event_loop(self):
         with tempfile.TemporaryDirectory() as directory, patch.dict(os.environ, {"HERMES_HOME": directory}):

@@ -21,10 +21,14 @@ make down
 make alexa-login
 ```
 
-Choose the Amazon website for the account (default `https://www.amazon.co.uk`), then
-enter the email, password and a fresh authenticator-app code in the terminal. Password
+Enter the email, password and a fresh authenticator-app code in the terminal. The
+connector starts Amazon's app-login flow on its global site, then automatically
+detects the account's regional site (for example `amazon.co.uk`). Password
 and code are hidden while typing and are not saved. Do not send them to the bot or
 paste them into a chat. Select the kitchen account's shopping list when prompted.
+
+The adapter handles both Amazon's combined email/password form and its separate
+email-then-password pages; it sends a password only when the returned form asks for it.
 Amazon may show a new Alexa app/device registration for this connector.
 
 Then:
@@ -50,6 +54,12 @@ rejects a login, check the account, authenticator code and any verification chal
 directly with Amazon. There is no stored-password fallback: repeat private login when
 the session is revoked. Development outside the container requires Python 3.12+ for
 the Alexa connector; the deployment image already satisfies this requirement.
+
+Connection errors report a fixed request stage (sign-in, app registration, capabilities,
+account discovery or shopping-list access), a safe exception category and the HTTP
+status when available. These diagnostics omit URLs, query strings, passwords, codes,
+tokens and response bodies. A generic HTTP rejection is not evidence that the password
+was wrong. Share only the stage/status; keep SDK debug/raw-response logging disabled.
 
 ## Product choices
 
