@@ -1,5 +1,10 @@
 # Third-party notices
 
+Alexa authentication uses the installed `aioamazondevices` dependency, licensed under
+Apache-2.0, copyright Simone Chemelli and contributors. Its upstream license and notices
+are included in the installed distribution: <https://github.com/chemelli74/aioamazondevices>.
+The local shopping adapter is independent code using Amazon mobile list protocol fields.
+
 The Ocado adapter's API route and response-shape reference is the Ocado provider from
 `abracadabra50/open-supermarkets`, revision `aff6880435ab3c43f4f79f3896dd4cf40142171c`:
 <https://github.com/abracadabra50/open-supermarkets>. Its notice is reproduced below.

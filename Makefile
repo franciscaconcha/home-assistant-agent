@@ -3,6 +3,16 @@
 init:
 	sh scripts/init.sh
 
+.PHONY: alexa-login alexa-enable alexa-check
+alexa-login:
+	docker compose run --rm --no-deps hermes /opt/household-tools/.venv/bin/household-alexa-login
+
+alexa-enable:
+	docker compose run --rm --no-deps hermes /opt/household-tools/.venv/bin/household-alexa-enable
+
+alexa-check:
+	docker compose exec hermes /opt/household-tools/.venv/bin/household-alexa-check
+
 build:
 	docker compose build --pull
 

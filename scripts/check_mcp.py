@@ -29,6 +29,7 @@ async def check(directory: str) -> None:
                 "ocado_plan_weekly_redo", "ocado_apply_weekly_redo",
                 "ocado_list_occasional_items", "ocado_get_occasional_item", "ocado_save_occasional_item",
                 "calendar_status", "calendar_list_events", "calendar_create_event",
+                "alexa_shopping_list", "alexa_import_plan", "alexa_save_product_alias",
             }
             result = await session.call_tool("household_status", {})
             assert not result.isError, result

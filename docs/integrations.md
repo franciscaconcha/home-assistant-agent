@@ -14,6 +14,10 @@ No real credentials or fake shopping/player data are included.
 [Google Calendar setup](calendar.md) adds upcoming-event reads and individual event
 creation on one shared calendar using a service account. No public endpoint is needed.
 
+[Alexa shopping-list import](alexa.md) optionally reads the kitchen list during an
+explicit Alexa-enabled weekly shop. Unknown products stop before writes; verified
+draft items can then be marked complete on Alexa. Checkout remains manual.
+
 Add adapter modules under `src/household_tools/integrations/` when implementing each
 service, and register narrowly scoped functions in `server.py` with `@mcp.tool()`.
 Hermes starts this server over stdio; no separate HTTP server or public port is needed.

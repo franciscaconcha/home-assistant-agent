@@ -174,13 +174,14 @@ def check_request_text(text: str, selected: list[dict]) -> None:
         raise ocado.OcadoError("Some requested recipe text was not resolved. Include every named recipe or clarify the request; no order was changed.")
 
 
-def shopping_plan(requested: list[str] | None = None, request_text: str | None = None, *, extras: list[str] | None = None) -> dict:
+def shopping_plan(requested: list[str] | None = None, request_text: str | None = None, *, extras: list[str] | None = None, include_alexa: bool = False) -> dict:
     from household_tools import occasional
     base = weekly.load_recipe()
     selected = resolve(requested if requested is not None else [])
     extra_entries = occasional.resolve(extras if extras is not None else [])
     if request_text is not None:
-        check_request_text(request_text, [*selected, *extra_entries])
+        alexa_names = [{"id": "alexa", "name": "including Alexa", "aliases": ["Alexa", "Alexa list", "my Alexa shopping list", "including my Alexa shopping list"]}] if include_alexa else []
+        check_request_text(request_text, [*selected, *extra_entries, *alexa_names])
     combined, sources = {}, {}
 
     def add(item, source):

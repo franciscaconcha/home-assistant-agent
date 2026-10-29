@@ -174,23 +174,35 @@ def apply_redo(plan_id: str, confirmed: bool = False) -> dict:
                extras=[entry.get("requested_name", entry["id"]) for entry in plan["target"].get("extras", [])], _redo_plan_id=plan_id)
 
 
-def run(trigger: str, recipes: list[str] | None = None, *, extras: list[str] | None = None, _redo_plan_id: str | None = None) -> dict:
+def run(trigger: str, recipes: list[str] | None = None, *, extras: list[str] | None = None, include_alexa: bool = False, _redo_plan_id: str | None = None) -> dict:
     if os.environ.get("OCADO_WEEKLY_ENABLED") != "true":
         raise ocado.OcadoError("Weekly Ocado is disabled. Run make ocado-enable-weekly on the droplet first.")
     match = re.fullmatch(r"(?:(?:redo|rebuild) )?(?:make my )?weekly ocado(?: again)?(?:(?:\s*,\s*(?:with\s+)?|\s+with\s+)(.+))?", trigger.strip(), re.IGNORECASE) if isinstance(trigger, str) else None
     if not match:
         raise ocado.OcadoError("Run this workflow only for the user's explicit 'weekly ocado' request.")
-    if match[1] and not recipes and not extras:
+    if type(include_alexa) is not bool or (include_alexa and not match[1]):
+        raise ocado.OcadoError("Include Alexa only for an explicit 'weekly ocado, including Alexa' request.")
+    if match[1] and not recipes and not extras and not include_alexa:
         raise ocado.OcadoError("This request names recipes or occasional items. Resolve every requested name; do not run a staples-only shop.")
     with edit.edit_lock():
         from household_tools.recipes import shopping_plan
-        recipe = shopping_plan(recipes, match[1], extras=extras)
+        recipe = shopping_plan(recipes, match[1], extras=extras, include_alexa=include_alexa)
+        captured = None
+        if include_alexa:
+            from household_tools.integrations import alexa
+            from household_tools import alexa_import
+            captured = alexa.snapshot()
+            # All current Alexa names must resolve before even selecting an order.
+            recipe = alexa_import.combine(recipe, captured)
         # Include one-off bookings as well: choose the next delivery, never skip to a later editable one.
         order = ocado.next_order(reserved_only=False)["order"]
         if order is None:
             raise ocado.OcadoError("There is no upcoming booked order. No trolley was created.")
         path = run_path(order["order_id"])
         previous = read_run(path)
+        if include_alexa and previous and previous.get("recipe", {}).get("alexa"):
+            # Rebuild once from the base plan to avoid counting imported items twice.
+            recipe = alexa_import.combine(shopping_plan(recipes, match[1], extras=extras, include_alexa=True), captured, previous)
         redo = load_redo(_redo_plan_id) if _redo_plan_id is not None else None
         repeat = bool(previous) and redo is None
         if redo:
@@ -284,14 +296,29 @@ def run(trigger: str, recipes: list[str] | None = None, *, extras: list[str] | N
                 cart = assert_cart(client, token, order["order_id"], expected)
                 summary = ocado.normalise_trolley(cart, [])
                 edit.persist_cookies(client, session)
+                if include_alexa:
+                    for item in recipe["alexa"]["items"]:
+                        item["verified_for_order"] = True
                 state.update(state="ready_for_checkout", subtotal=summary["subtotal"], currency=summary["currency"])
                 yoto.write_private(path, state)
                 if redo:
                     redo["state"] = "applied"
                     yoto.write_private(redo_path(_redo_plan_id), redo)
+                alexa_result = None
+                if include_alexa:
+                    try:
+                        alexa_result = alexa.complete_snapshot(recipe["alexa"])
+                    except Exception:
+                        alexa_result = {"status": "pending", "note": "Ocado was prepared, but Alexa completion could not be confirmed. Do not repeat Ocado just to clear Alexa."}
+                    state["alexa_completion"] = alexa_result
+                    try:
+                        yoto.write_private(path, state)
+                    except OSError:
+                        pass  # The verified trolley and captured entries are already saved.
                 return {"status": "ready_for_checkout", "delivery": order["delivery"], "items": recipe["items"],
                         "recipes": recipe["recipes"], "breakdown": recipe["breakdown"],
                         "extras": recipe["extras"],
+                        **({"alexa": alexa_result} if include_alexa else {}),
                         "subtotal": summary["subtotal"], "currency": summary["currency"],
                         "checkout_url": ocado.ORIGIN + "/checkout/summary",
                         "note": "Notify the user: the booked order's edit trolley now contains exactly the weekly list. Open Ocado and review/save/check out before the deadline. Checkout was NOT submitted and the order is NOT confirmed as updated. Stock, minimum spend and checkout checks remain for Ocado."}
