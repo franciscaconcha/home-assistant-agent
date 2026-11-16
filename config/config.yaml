@@ -5,6 +5,13 @@ whatsapp:
   group_policy: pairing
   send_read_receipts: false
 
+# Hide tool-call progress lines (e.g. "mcp_household_...") from WhatsApp chats.
+# Quoted so YAML does not parse it as boolean false.
+display:
+  platforms:
+    whatsapp:
+      tool_progress: "off"
+
 mcp_servers:
   household:
     command: /opt/household-tools/.venv/bin/household-tools
